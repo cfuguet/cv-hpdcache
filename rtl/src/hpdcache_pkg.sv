@@ -380,6 +380,8 @@ package hpdcache_pkg;
     typedef struct packed {
         //  Number of requesters
         int unsigned nRequesters;
+        //  Number of banks
+        int unsigned nBanks;
         //  Physical Address Width
         int unsigned paWidth;
         //  Word width (bits)
@@ -474,6 +476,7 @@ package hpdcache_pkg;
         int unsigned reqDataBytes;
         int unsigned mshrSetWidth;
         int unsigned mshrWayWidth;
+        int unsigned mshrIdWidth;
         int unsigned wbufDataWidth;
         int unsigned wbufDirPtrWidth;
         int unsigned wbufDataPtrWidth;
@@ -500,6 +503,11 @@ package hpdcache_pkg;
 
         ret.mshrSetWidth = (p.mshrSets > 1) ? $clog2(p.mshrSets) : 1;
         ret.mshrWayWidth = (p.mshrWays > 1) ? $clog2(p.mshrWays) : 1;
+        if (p.mshrSets > 1) begin
+            ret.mshrIdWidth = (p.mshrWays > 1) ? (ret.mshrSetWidth + ret.mshrWayWidth) : ret.mshrSetWidth;
+        end else begin
+            ret.mshrIdWidth = (p.mshrWays > 1) ? ret.mshrWayWidth : 0;
+        end
 
         ret.wbufDataWidth = ret.reqDataWidth*p.wbufWords;
         ret.wbufDirPtrWidth = $clog2(p.wbufDirEntries);

@@ -86,7 +86,9 @@ USER_CPPFLAGS       += -I$(TB_DIR) \
                        $(if $(filter 1,$(DEBUG)),-DDEBUG) \
                        $(CONF_DEFINES)
 
-VERILATOR_FLAGS     += -Wall -Wno-fatal -O3 -I$(HPDCACHE_DIR)/rtl/src \
+VERILATOR_FLAGS     += -Wall -Wno-fatal \
+ 					   -Werror-PINMISSING -Werror-IMPLICIT -Werror-UNDRIVEN \
+					   -O3 -I$(HPDCACHE_DIR)/rtl/src \
                        --x-assign fast --x-initial fast \
                        $(if $(filter 1,$(DISABLE_TRACE)),\
                                     $(info make: Tracing support disabled), \

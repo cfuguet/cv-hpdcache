@@ -31,6 +31,7 @@ import hpdcache_pkg::*;
 #(
     localparam hpdcache_user_cfg_t UserCfg = '{
         nRequesters: (4'b1 << `CONF_HPDCACHE_REQ_SRC_ID_WIDTH),
+        nBanks: 1,
         paWidth: `CONF_HPDCACHE_PA_WIDTH,
         wordWidth: `CONF_HPDCACHE_WORD_WIDTH,
         sets: `CONF_HPDCACHE_SETS,
@@ -367,9 +368,9 @@ import hpdcache_pkg::*;
     //  Assertions/Coverage
     //  {{{
     //  pragma translate_off
-    wbuf_not_ready_cover: cover property (
-        @(posedge clk_i) i_hpdcache.hpdcache_ctrl_i.wbuf_write_o &
-                        ~i_hpdcache.hpdcache_ctrl_i.wbuf_write_ready_i);
+    //wbuf_not_ready_cover: cover property (
+    //    @(posedge clk_i) i_hpdcache.gen_banks[0].hpdcache_ctrl_i.wbuf_write_o &
+    //                    ~i_hpdcache.gen_banks[0].hpdcache_ctrl_i.wbuf_write_ready_i);
     //  pragma translate_on
     //  }}}
 

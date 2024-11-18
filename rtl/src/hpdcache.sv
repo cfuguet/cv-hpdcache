@@ -150,6 +150,7 @@ import hpdcache_pkg::*;
     typedef logic unsigned [HPDcacheCfg.clWordIdxWidth-1:0] hpdcache_word_t;
     typedef logic unsigned [HPDcacheCfg.u.ways-1:0] hpdcache_way_vector_t;
     typedef logic unsigned [HPDcacheCfg.wayIndexWidth-1:0] hpdcache_way_t;
+    typedef logic [HPDcacheCfg.mshrIdWidth-1:0] hpdcache_mshr_id_t;
 
     //  Cache Directory entry definition
     //  {{{
@@ -198,9 +199,6 @@ import hpdcache_pkg::*;
     logic                  refill_write_data;
     hpdcache_word_t        refill_word;
     hpdcache_access_data_t refill_data;
-    logic                  refill_core_rsp_valid;
-    hpdcache_rsp_t         refill_core_rsp;
-    hpdcache_nline_t       refill_nline;
     logic                  refill_updt_rtab;
 
     logic                  inval_check_dir;
@@ -209,22 +207,6 @@ import hpdcache_pkg::*;
     logic                  inval_hit;
 
     logic                  miss_mshr_empty;
-    logic                  miss_mshr_check;
-    hpdcache_req_offset_t  miss_mshr_check_offset;
-    hpdcache_nline_t       miss_mshr_check_nline;
-    logic                  miss_mshr_hit;
-    logic                  miss_mshr_alloc_cs;
-    logic                  miss_mshr_alloc;
-    logic                  miss_mshr_alloc_ready;
-    logic                  miss_mshr_alloc_full;
-    hpdcache_nline_t       miss_mshr_alloc_nline;
-    hpdcache_req_tid_t     miss_mshr_alloc_tid;
-    hpdcache_req_sid_t     miss_mshr_alloc_sid;
-    hpdcache_word_t        miss_mshr_alloc_word;
-    hpdcache_way_vector_t  miss_mshr_alloc_victim_way;
-    logic                  miss_mshr_alloc_need_rsp;
-    logic                  miss_mshr_alloc_is_prefetch;
-    logic                  miss_mshr_alloc_wback;
 
     logic                  wbuf_flush_all;
     logic                  wbuf_write;
@@ -391,6 +373,15 @@ import hpdcache_pkg::*;
         {HPDcacheCfg.u.memIdWidth{1'b1}};
     localparam logic [HPDcacheCfg.u.memIdWidth-1:0] HPDCACHE_UC_WRITE_ID =
         {HPDcacheCfg.u.memIdWidth{1'b1}};
+
+    logic                  miss_req_valid [HPDcacheCfg.u.nBanks];
+    logic                  miss_req_ready [HPDcacheCfg.u.nBanks];
+    hpdcache_nline_t       miss_req_nline [HPDcacheCfg.u.nBanks];
+    hpdcache_req_tid_t     miss_req_tid   [HPDcacheCfg.u.nBanks];
+
+    logic                  mshr_ack    [HPDcacheCfg.u.nBanks];
+    logic                  mshr_ack_cs [HPDcacheCfg.u.nBanks];
+    hpdcache_mshr_id_t     mshr_ack_id [HPDcacheCfg.u.nBanks];
     //  }}}
 
     //  Requesters arbiter
@@ -435,192 +426,189 @@ import hpdcache_pkg::*;
         assign cfg_default_wb = 1'b1;
     end
 
-    hpdcache_ctrl #(
-        .HPDcacheCfg                        (HPDcacheCfg),
-        .hpdcache_nline_t                   (hpdcache_nline_t),
-        .hpdcache_tag_t                     (hpdcache_tag_t),
-        .hpdcache_set_t                     (hpdcache_set_t),
-        .hpdcache_word_t                    (hpdcache_word_t),
-        .hpdcache_data_word_t               (hpdcache_data_word_t),
-        .hpdcache_data_be_t                 (hpdcache_data_be_t),
-        .hpdcache_dir_entry_t               (hpdcache_dir_entry_t),
-        .hpdcache_way_vector_t              (hpdcache_way_vector_t),
-        .hpdcache_way_t                     (hpdcache_way_t),
-        .wbuf_addr_t                        (wbuf_addr_t),
-        .wbuf_data_t                        (wbuf_data_t),
-        .wbuf_be_t                          (wbuf_be_t),
-        .hpdcache_access_data_t             (hpdcache_access_data_t),
-        .hpdcache_access_be_t               (hpdcache_access_be_t),
-        .hpdcache_req_addr_t                (hpdcache_req_addr_t),
-        .hpdcache_req_offset_t              (hpdcache_req_offset_t),
-        .hpdcache_req_tid_t                 (hpdcache_req_tid_t),
-        .hpdcache_req_sid_t                 (hpdcache_req_sid_t),
-        .hpdcache_req_data_t                (hpdcache_req_data_t),
-        .hpdcache_req_be_t                  (hpdcache_req_be_t),
-        .hpdcache_req_t                     (hpdcache_req_t),
-        .hpdcache_rsp_t                     (hpdcache_rsp_t)
-    ) hpdcache_ctrl_i(
-        .clk_i,
-        .rst_ni,
+    generate
+        genvar bank_id;
+        for (bank_id = 0; bank_id < HPDcacheCfg.u.nBanks; bank_id++) begin: gen_banks
+            hpdcache_ctrl #(
+                .HPDcacheCfg                        (HPDcacheCfg),
+                .hpdcache_nline_t                   (hpdcache_nline_t),
+                .hpdcache_tag_t                     (hpdcache_tag_t),
+                .hpdcache_set_t                     (hpdcache_set_t),
+                .hpdcache_word_t                    (hpdcache_word_t),
+                .hpdcache_data_word_t               (hpdcache_data_word_t),
+                .hpdcache_data_be_t                 (hpdcache_data_be_t),
+                .hpdcache_dir_entry_t               (hpdcache_dir_entry_t),
+                .hpdcache_way_vector_t              (hpdcache_way_vector_t),
+                .hpdcache_way_t                     (hpdcache_way_t),
+                .hpdcache_mshr_id_t                 (hpdcache_mshr_id_t),
+                .wbuf_addr_t                        (wbuf_addr_t),
+                .wbuf_data_t                        (wbuf_data_t),
+                .wbuf_be_t                          (wbuf_be_t),
+                .hpdcache_access_data_t             (hpdcache_access_data_t),
+                .hpdcache_access_be_t               (hpdcache_access_be_t),
+                .hpdcache_req_addr_t                (hpdcache_req_addr_t),
+                .hpdcache_req_offset_t              (hpdcache_req_offset_t),
+                .hpdcache_req_tid_t                 (hpdcache_req_tid_t),
+                .hpdcache_req_sid_t                 (hpdcache_req_sid_t),
+                .hpdcache_req_data_t                (hpdcache_req_data_t),
+                .hpdcache_req_be_t                  (hpdcache_req_be_t),
+                .hpdcache_req_t                     (hpdcache_req_t),
+                .hpdcache_rsp_t                     (hpdcache_rsp_t)
+            ) hpdcache_ctrl_i(
+                .clk_i,
+                .rst_ni,
 
-        .core_req_valid_i                   (arb_req_valid),
-        .core_req_ready_o                   (arb_req_ready),
-        .core_req_i                         (arb_req),
-        .core_req_abort_i                   (arb_abort),
-        .core_req_tag_i                     (arb_tag),
-        .core_req_pma_i                     (arb_pma),
+                .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
 
-        .core_rsp_valid_o                   (core_rsp_valid),
-        .core_rsp_o                         (core_rsp),
+                .core_req_valid_i                   (arb_req_valid),
+                .core_req_ready_o                   (arb_req_ready),
+                .core_req_i                         (arb_req),
+                .core_req_abort_i                   (arb_abort),
+                .core_req_tag_i                     (arb_tag),
+                .core_req_pma_i                     (arb_pma),
 
-        .wbuf_flush_i,
+                .core_rsp_valid_o                   (core_rsp_valid),
+                .core_rsp_o                         (core_rsp),
 
-        .cachedir_hit_o                     (/* unused */),
+                .wbuf_flush_i,
 
-        .st0_mshr_check_o                   (miss_mshr_check),
-        .st0_mshr_check_offset_o            (miss_mshr_check_offset),
-        .st1_mshr_check_nline_o             (miss_mshr_check_nline),
-        .st1_mshr_hit_i                     (miss_mshr_hit),
-        .st1_mshr_alloc_ready_i             (miss_mshr_alloc_ready),
-        .st1_mshr_alloc_full_i              (miss_mshr_alloc_full),
-        .st2_mshr_alloc_o                   (miss_mshr_alloc),
-        .st2_mshr_alloc_cs_o                (miss_mshr_alloc_cs),
-        .st2_mshr_alloc_nline_o             (miss_mshr_alloc_nline),
-        .st2_mshr_alloc_tid_o               (miss_mshr_alloc_tid),
-        .st2_mshr_alloc_sid_o               (miss_mshr_alloc_sid),
-        .st2_mshr_alloc_word_o              (miss_mshr_alloc_word),
-        .st2_mshr_alloc_victim_way_o        (miss_mshr_alloc_victim_way),
-        .st2_mshr_alloc_need_rsp_o          (miss_mshr_alloc_need_rsp),
-        .st2_mshr_alloc_is_prefetch_o       (miss_mshr_alloc_is_prefetch),
-        .st2_mshr_alloc_wback_o             (miss_mshr_alloc_wback),
+                .cachedir_hit_o                     (/* unused */),
 
-        .refill_req_valid_i                 (refill_req_valid),
-        .refill_req_ready_o                 (refill_req_ready),
-        .refill_is_error_i                  (refill_is_error),
-        .refill_busy_i                      (refill_busy),
-        .refill_updt_sel_victim_i           (refill_updt_sel_victim),
-        .refill_set_i                       (refill_set),
-        .refill_way_i                       (refill_way),
-        .refill_dir_entry_i                 (refill_dir_entry),
-        .refill_write_dir_i                 (refill_write_dir),
-        .refill_write_data_i                (refill_write_data),
-        .refill_word_i                      (refill_word),
-        .refill_data_i                      (refill_data),
-        .refill_core_rsp_valid_i            (refill_core_rsp_valid),
-        .refill_core_rsp_i                  (refill_core_rsp),
-        .refill_nline_i                     (refill_nline),
-        .refill_updt_rtab_i                 (refill_updt_rtab),
+                .miss_req_valid_o                   (miss_req_valid[bank_id]),
+                .miss_req_ready_i                   (miss_req_ready[bank_id]),
+                .miss_req_nline_o                   (miss_req_nline[bank_id]),
+                .miss_req_tid_o                     (miss_req_tid[bank_id]),
 
-        .flush_busy_i                       (flush_busy),
-        .flush_check_nline_o                (flush_check_nline),
-        .flush_check_hit_i                  (flush_check_hit),
-        .flush_alloc_o                      (ctrl_flush_alloc),
-        .flush_alloc_ready_i                (flush_alloc_ready),
-        .flush_alloc_nline_o                (ctrl_flush_alloc_nline),
-        .flush_alloc_way_o                  (ctrl_flush_alloc_way),
-        .flush_data_read_i                  (flush_data_read),
-        .flush_data_read_set_i              (flush_data_read_set),
-        .flush_data_read_word_i             (flush_data_read_word),
-        .flush_data_read_way_i              (flush_data_read_way),
-        .flush_data_read_data_o             (flush_data_read_data),
-        .flush_ack_i                        (flush_ack),
-        .flush_ack_nline_i                  (flush_ack_nline),
+                .mshr_ack_i                         (mshr_ack[bank_id]),
+                .mshr_ack_cs_i                      (mshr_ack_cs[bank_id]),
+                .mshr_ack_id_i                      (mshr_ack_id[bank_id]),
 
-        .inval_check_dir_i                  (inval_check_dir),
-        .inval_write_dir_i                  (inval_write_dir),
-        .inval_nline_i                      (inval_nline),
-        .inval_hit_o                        (inval_hit),
+                .mshr_full_o                        (/* unused */),
+                .mshr_empty_o                       (miss_mshr_empty),
 
-        .wbuf_empty_i                       (wbuf_empty_o),
-        .wbuf_flush_all_o                   (wbuf_flush_all),
-        .wbuf_write_o                       (wbuf_write),
-        .wbuf_write_ready_i                 (wbuf_write_ready),
-        .wbuf_write_addr_o                  (wbuf_write_addr),
-        .wbuf_write_data_o                  (wbuf_write_data),
-        .wbuf_write_be_o                    (wbuf_write_be),
-        .wbuf_write_uncacheable_o           (wbuf_write_uncacheable),
-        .wbuf_read_hit_i                    (wbuf_read_hit),
-        .wbuf_read_flush_hit_o              (wbuf_read_flush_hit),
-        .wbuf_rtab_addr_o                   (wbuf_rtab_addr),
-        .wbuf_rtab_is_read_o                (wbuf_rtab_is_read),
-        .wbuf_rtab_hit_open_i               (wbuf_rtab_hit_open),
-        .wbuf_rtab_hit_pend_i               (wbuf_rtab_hit_pend),
-        .wbuf_rtab_hit_sent_i               (wbuf_rtab_hit_sent),
-        .wbuf_rtab_not_ready_i              (wbuf_rtab_not_ready),
+                .refill_req_valid_i                 (refill_req_valid),
+                .refill_req_ready_o                 (refill_req_ready),
+                .refill_is_error_i                  (refill_is_error),
+                .refill_busy_i                      (refill_busy),
+                .refill_write_dir_i                 (refill_write_dir),
+                .refill_write_data_i                (refill_write_data),
+                .refill_word_i                      (refill_word),
+                .refill_data_i                      (refill_data),
+                .refill_updt_rtab_i                 (refill_updt_rtab),
 
-        .uc_busy_i                          (~uc_ready),
-        .uc_lrsc_snoop_o                    (uc_lrsc_snoop),
-        .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr),
-        .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size),
-        .uc_req_valid_o                     (uc_req_valid),
-        .uc_req_op_o                        (uc_req_op),
-        .uc_req_addr_o                      (uc_req_addr),
-        .uc_req_size_o                      (uc_req_size),
-        .uc_req_data_o                      (uc_req_data),
-        .uc_req_be_o                        (uc_req_be),
-        .uc_req_uc_o                        (uc_req_uncacheable),
-        .uc_req_sid_o                       (uc_req_sid),
-        .uc_req_tid_o                       (uc_req_tid),
-        .uc_req_need_rsp_o                  (uc_req_need_rsp),
-        .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
-        .uc_dir_amo_match_i                 (uc_dir_amo_match),
-        .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
-        .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
-        .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
-        .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way),
-        .uc_data_amo_write_i                (uc_data_amo_write),
-        .uc_data_amo_write_enable_i         (uc_data_amo_write_enable),
-        .uc_data_amo_write_set_i            (uc_data_amo_write_set),
-        .uc_data_amo_write_size_i           (uc_data_amo_write_size),
-        .uc_data_amo_write_word_i           (uc_data_amo_write_word),
-        .uc_data_amo_write_data_i           (uc_data_amo_write_data),
-        .uc_data_amo_write_be_i             (uc_data_amo_write_be),
-        .uc_core_rsp_ready_o                (uc_core_rsp_ready),
-        .uc_core_rsp_valid_i                (uc_core_rsp_valid),
-        .uc_core_rsp_i                      (uc_core_rsp),
+                .flush_busy_i                       (flush_busy),
+                .flush_check_nline_o                (flush_check_nline),
+                .flush_check_hit_i                  (flush_check_hit),
+                .flush_alloc_o                      (ctrl_flush_alloc),
+                .flush_alloc_ready_i                (flush_alloc_ready),
+                .flush_alloc_nline_o                (ctrl_flush_alloc_nline),
+                .flush_alloc_way_o                  (ctrl_flush_alloc_way),
+                .flush_data_read_i                  (flush_data_read),
+                .flush_data_read_set_i              (flush_data_read_set),
+                .flush_data_read_word_i             (flush_data_read_word),
+                .flush_data_read_way_i              (flush_data_read_way),
+                .flush_data_read_data_o             (flush_data_read_data),
+                .flush_ack_i                        (flush_ack),
+                .flush_ack_nline_i                  (flush_ack_nline),
 
-        .cmo_busy_i                         (~cmo_ready),
-        .cmo_wait_i                         (cmo_wait),
-        .cmo_req_valid_o                    (cmo_req_valid),
-        .cmo_req_op_o                       (cmo_req_op),
-        .cmo_req_addr_o                     (cmo_req_addr),
-        .cmo_req_wdata_o                    (cmo_req_wdata),
-        .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
-        .cmo_dir_check_nline_i              (cmo_dir_check_nline),
-        .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
-        .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
-        .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way),
-        .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty),
-        .cmo_dir_check_entry_i              (cmo_dir_check_entry),
-        .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
-        .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
-        .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid),
-        .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty),
-        .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag),
-        .cmo_dir_inval_i                    (cmo_dir_inval),
-        .cmo_dir_inval_set_i                (cmo_dir_inval_set),
-        .cmo_dir_inval_way_i                (cmo_dir_inval_way),
+                .inval_check_dir_i                  (inval_check_dir),
+                .inval_write_dir_i                  (inval_write_dir),
+                .inval_nline_i                      (inval_nline),
+                .inval_hit_o                        (inval_hit),
 
-        .rtab_empty_o                       (rtab_empty),
-        .ctrl_empty_o                       (ctrl_empty),
+                .wbuf_empty_i                       (wbuf_empty_o),
+                .wbuf_flush_all_o                   (wbuf_flush_all),
+                .wbuf_write_o                       (wbuf_write),
+                .wbuf_write_ready_i                 (wbuf_write_ready),
+                .wbuf_write_addr_o                  (wbuf_write_addr),
+                .wbuf_write_data_o                  (wbuf_write_data),
+                .wbuf_write_be_o                    (wbuf_write_be),
+                .wbuf_write_uncacheable_o           (wbuf_write_uncacheable),
+                .wbuf_read_hit_i                    (wbuf_read_hit),
+                .wbuf_read_flush_hit_o              (wbuf_read_flush_hit),
+                .wbuf_rtab_addr_o                   (wbuf_rtab_addr),
+                .wbuf_rtab_is_read_o                (wbuf_rtab_is_read),
+                .wbuf_rtab_hit_open_i               (wbuf_rtab_hit_open),
+                .wbuf_rtab_hit_pend_i               (wbuf_rtab_hit_pend),
+                .wbuf_rtab_hit_sent_i               (wbuf_rtab_hit_sent),
+                .wbuf_rtab_not_ready_i              (wbuf_rtab_not_ready),
 
-        .cfg_enable_i,
-        .cfg_prefetch_updt_plru_i,
-        .cfg_rtab_single_entry_i,
-        .cfg_default_wb_i                   (cfg_default_wb),
+                .uc_busy_i                          (~uc_ready),
+                .uc_lrsc_snoop_o                    (uc_lrsc_snoop),
+                .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr),
+                .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size),
+                .uc_req_valid_o                     (uc_req_valid),
+                .uc_req_op_o                        (uc_req_op),
+                .uc_req_addr_o                      (uc_req_addr),
+                .uc_req_size_o                      (uc_req_size),
+                .uc_req_data_o                      (uc_req_data),
+                .uc_req_be_o                        (uc_req_be),
+                .uc_req_uc_o                        (uc_req_uncacheable),
+                .uc_req_sid_o                       (uc_req_sid),
+                .uc_req_tid_o                       (uc_req_tid),
+                .uc_req_need_rsp_o                  (uc_req_need_rsp),
+                .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
+                .uc_dir_amo_match_i                 (uc_dir_amo_match),
+                .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
+                .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
+                .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
+                .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way),
+                .uc_data_amo_write_i                (uc_data_amo_write),
+                .uc_data_amo_write_enable_i         (uc_data_amo_write_enable),
+                .uc_data_amo_write_set_i            (uc_data_amo_write_set),
+                .uc_data_amo_write_size_i           (uc_data_amo_write_size),
+                .uc_data_amo_write_word_i           (uc_data_amo_write_word),
+                .uc_data_amo_write_data_i           (uc_data_amo_write_data),
+                .uc_data_amo_write_be_i             (uc_data_amo_write_be),
+                .uc_core_rsp_ready_o                (uc_core_rsp_ready),
+                .uc_core_rsp_valid_i                (uc_core_rsp_valid),
+                .uc_core_rsp_i                      (uc_core_rsp),
 
-        .evt_cache_write_miss_o,
-        .evt_cache_read_miss_o,
-        .evt_uncached_req_o,
-        .evt_cmo_req_o,
-        .evt_write_req_o,
-        .evt_read_req_o,
-        .evt_prefetch_req_o,
-        .evt_req_on_hold_o,
-        .evt_rtab_rollback_o,
-        .evt_stall_refill_o,
-        .evt_stall_o
-    );
+                .cmo_busy_i                         (~cmo_ready),
+                .cmo_wait_i                         (cmo_wait),
+                .cmo_req_valid_o                    (cmo_req_valid),
+                .cmo_req_op_o                       (cmo_req_op),
+                .cmo_req_addr_o                     (cmo_req_addr),
+                .cmo_req_wdata_o                    (cmo_req_wdata),
+                .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
+                .cmo_dir_check_nline_i              (cmo_dir_check_nline),
+                .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
+                .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
+                .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way),
+                .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty),
+                .cmo_dir_check_entry_i              (cmo_dir_check_entry),
+                .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
+                .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
+                .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid),
+                .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty),
+                .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag),
+                .cmo_dir_inval_i                    (cmo_dir_inval),
+                .cmo_dir_inval_set_i                (cmo_dir_inval_set),
+                .cmo_dir_inval_way_i                (cmo_dir_inval_way),
+
+                .rtab_empty_o                       (rtab_empty),
+                .ctrl_empty_o                       (ctrl_empty),
+
+                .cfg_enable_i,
+                .cfg_prefetch_updt_plru_i,
+                .cfg_rtab_single_entry_i,
+                .cfg_default_wb_i                   (cfg_default_wb),
+
+                .evt_cache_write_miss_o,
+                .evt_cache_read_miss_o,
+                .evt_uncached_req_o,
+                .evt_cmo_req_o,
+                .evt_write_req_o,
+                .evt_read_req_o,
+                .evt_prefetch_req_o,
+                .evt_req_on_hold_o,
+                .evt_rtab_rollback_o,
+                .evt_stall_refill_o,
+                .evt_stall_o
+            );
+        end
+    endgenerate
+
     //  }}}
 
     //  HPDcache write-buffer
@@ -703,13 +691,11 @@ import hpdcache_pkg::*;
     hpdcache_miss_handler #(
         .HPDcacheCfg                        (HPDcacheCfg),
         .hpdcache_nline_t                   (hpdcache_nline_t),
-        .hpdcache_set_t                     (hpdcache_set_t),
-        .hpdcache_tag_t                     (hpdcache_tag_t),
         .hpdcache_word_t                    (hpdcache_word_t),
         .hpdcache_way_vector_t              (hpdcache_way_vector_t),
         .hpdcache_way_t                     (hpdcache_way_t),
-        .hpdcache_dir_entry_t               (hpdcache_dir_entry_t),
         .hpdcache_refill_data_t             (hpdcache_access_data_t),
+        .hpdcache_mshr_id_t                 (hpdcache_mshr_id_t),
         .hpdcache_req_data_t                (hpdcache_req_data_t),
         .hpdcache_req_offset_t              (hpdcache_req_offset_t),
         .hpdcache_req_sid_t                 (hpdcache_req_sid_t),
@@ -723,42 +709,19 @@ import hpdcache_pkg::*;
         .clk_i,
         .rst_ni,
 
-        .mshr_empty_o                       (miss_mshr_empty),
-        .mshr_full_o                        (/* unused */),
-
-        .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
-
-        .mshr_check_i                       (miss_mshr_check),
-        .mshr_check_offset_i                (miss_mshr_check_offset),
-        .mshr_check_nline_i                 (miss_mshr_check_nline),
-        .mshr_check_hit_o                   (miss_mshr_hit),
-
-        .mshr_alloc_ready_o                 (miss_mshr_alloc_ready),
-        .mshr_alloc_i                       (miss_mshr_alloc),
-        .mshr_alloc_cs_i                    (miss_mshr_alloc_cs),
-        .mshr_alloc_nline_i                 (miss_mshr_alloc_nline),
-        .mshr_alloc_full_o                  (miss_mshr_alloc_full),
-        .mshr_alloc_tid_i                   (miss_mshr_alloc_tid),
-        .mshr_alloc_sid_i                   (miss_mshr_alloc_sid),
-        .mshr_alloc_word_i                  (miss_mshr_alloc_word),
-        .mshr_alloc_victim_way_i            (miss_mshr_alloc_victim_way),
-        .mshr_alloc_need_rsp_i              (miss_mshr_alloc_need_rsp),
-        .mshr_alloc_is_prefetch_i           (miss_mshr_alloc_is_prefetch),
-        .mshr_alloc_wback_i                 (miss_mshr_alloc_wback),
+        .miss_req_valid_i                   (miss_req_valid),
+        .miss_req_ready_o                   (miss_req_ready),
+        .miss_req_nline_i                   (miss_req_nline),
+        .miss_req_tid_i                     (miss_req_tid),
 
         .refill_req_ready_i                 (refill_req_ready),
         .refill_req_valid_o                 (refill_req_valid),
         .refill_is_error_o                  (refill_is_error),
         .refill_busy_o                      (refill_busy),
-        .refill_updt_sel_victim_o           (refill_updt_sel_victim),
-        .refill_set_o                       (refill_set),
-        .refill_way_o                       (refill_way),
-        .refill_dir_entry_o                 (refill_dir_entry),
         .refill_write_dir_o                 (refill_write_dir),
         .refill_write_data_o                (refill_write_data),
         .refill_data_o                      (refill_data),
         .refill_word_o                      (refill_word),
-        .refill_nline_o                     (refill_nline),
         .refill_updt_rtab_o                 (refill_updt_rtab),
 
         .inval_check_dir_o                  (inval_check_dir),
@@ -766,8 +729,9 @@ import hpdcache_pkg::*;
         .inval_nline_o                      (inval_nline),
         .inval_hit_i                        (inval_hit),
 
-        .refill_core_rsp_valid_o            (refill_core_rsp_valid),
-        .refill_core_rsp_o                  (refill_core_rsp),
+        .mshr_ack_o                         (mshr_ack),
+        .mshr_ack_cs_o                      (mshr_ack_cs),
+        .mshr_ack_id_o                      (mshr_ack_id),
 
         .mem_req_ready_i                    (mem_req_read_miss_ready),
         .mem_req_valid_o                    (mem_req_read_miss_valid),

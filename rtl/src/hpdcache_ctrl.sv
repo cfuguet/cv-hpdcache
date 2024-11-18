@@ -44,6 +44,8 @@ import hpdcache_pkg::*;
     parameter type hpdcache_way_vector_t = logic,
     parameter type hpdcache_way_t = logic,
 
+    parameter type hpdcache_mshr_id_t = logic,
+
     parameter type wbuf_addr_t = logic,
     parameter type wbuf_data_t = logic,
     parameter type wbuf_be_t = logic,
@@ -69,6 +71,9 @@ import hpdcache_pkg::*;
     input  logic                  clk_i,
     input  logic                  rst_ni,
 
+    //      Config
+    input  logic cfg_prefetch_updt_sel_victim_i,
+
     //      Core request interface
     input  logic                  core_req_valid_i,
     output logic                  core_req_ready_o,
@@ -87,40 +92,28 @@ import hpdcache_pkg::*;
     //      Global control signals
     output logic                  cachedir_hit_o,
 
-    //      Miss handler interface
-    output logic                  st0_mshr_check_o,
-    output hpdcache_req_offset_t  st0_mshr_check_offset_o,
-    output hpdcache_nline_t       st1_mshr_check_nline_o,
-    input  logic                  st1_mshr_hit_i,
-    input  logic                  st1_mshr_alloc_ready_i,
-    input  logic                  st1_mshr_alloc_full_i,
-    output logic                  st2_mshr_alloc_o,
-    output logic                  st2_mshr_alloc_cs_o,
-    output hpdcache_nline_t       st2_mshr_alloc_nline_o,
-    output hpdcache_req_tid_t     st2_mshr_alloc_tid_o,
-    output hpdcache_req_sid_t     st2_mshr_alloc_sid_o,
-    output hpdcache_word_t        st2_mshr_alloc_word_o,
-    output hpdcache_way_vector_t  st2_mshr_alloc_victim_way_o,
-    output logic                  st2_mshr_alloc_need_rsp_o,
-    output logic                  st2_mshr_alloc_is_prefetch_o,
-    output logic                  st2_mshr_alloc_wback_o,
+    //      Miss interface
+    output logic                  miss_req_valid_o,
+    input  logic                  miss_req_ready_i,
+    output hpdcache_nline_t       miss_req_nline_o,
+    output hpdcache_req_tid_t     miss_req_tid_o,
+
+    input  logic                  mshr_ack_i,
+    input  logic                  mshr_ack_cs_i,
+    input  hpdcache_mshr_id_t     mshr_ack_id_i,
+
+    output logic                  mshr_empty_o,
+    output logic                  mshr_full_o,
 
     //      Refill interface
     input  logic                  refill_req_valid_i,
     output logic                  refill_req_ready_o,
     input  logic                  refill_is_error_i,
     input  logic                  refill_busy_i,
-    input  logic                  refill_updt_sel_victim_i,
-    input  hpdcache_set_t         refill_set_i,
-    input  hpdcache_way_vector_t  refill_way_i,
-    input  hpdcache_dir_entry_t   refill_dir_entry_i,
     input  logic                  refill_write_dir_i,
     input  logic                  refill_write_data_i,
     input  hpdcache_word_t        refill_word_i,
     input  hpdcache_access_data_t refill_data_i,
-    input  logic                  refill_core_rsp_valid_i,
-    input  hpdcache_rsp_t         refill_core_rsp_i,
-    input  hpdcache_nline_t       refill_nline_i,
     input  logic                  refill_updt_rtab_i,
 
     //      Flush interface
@@ -242,6 +235,11 @@ import hpdcache_pkg::*;
 );
     // }}}
 
+    localparam hpdcache_uint REFILL_REQ_RATIO = HPDcacheCfg.u.accessWords /
+                                                HPDcacheCfg.u.reqWords;
+    localparam hpdcache_uint REFILL_CYCLES    = HPDcacheCfg.u.clWords /
+                                                HPDcacheCfg.u.accessWords;
+
     //  Definition of internal registers
     //  {{{
     typedef logic [$clog2(HPDcacheCfg.u.rtabEntries)-1:0] rtab_ptr_t;
@@ -250,6 +248,9 @@ import hpdcache_pkg::*;
         hpdcache_req_t req;
         hpdcache_way_t way_fetch;
     } rtab_entry_t;
+
+    typedef logic [HPDcacheCfg.mshrWayWidth-1:0] mshr_way_t;
+    typedef logic [HPDcacheCfg.mshrSetWidth-1:0] mshr_set_t;
     //  }}}
 
     //  Definition of internal registers
@@ -304,6 +305,48 @@ import hpdcache_pkg::*;
     rtab_entry_t             st0_rtab_pop_try_req;
     rtab_ptr_t               st0_rtab_pop_try_ptr;
     logic                    st0_rtab_pop_try_error;
+    logic                    st0_mshr_check;
+    hpdcache_tag_t           st0_mshr_check_tag;
+    hpdcache_set_t           st0_mshr_check_set;
+    hpdcache_way_t           mshr_alloc_victim_way_index;
+    mshr_set_t               mshr_ack_set;
+    mshr_way_t               mshr_ack_way;
+    hpdcache_set_t           mshr_ack_cache_set;
+    hpdcache_way_t           mshr_ack_cache_way;
+    hpdcache_tag_t           mshr_ack_cache_tag;
+    hpdcache_req_sid_t       mshr_ack_src_id;
+    hpdcache_req_tid_t       mshr_ack_req_id;
+    hpdcache_word_t          mshr_ack_word;
+    logic                    mshr_ack_need_rsp;
+    logic                    mshr_ack_is_prefetch;
+    logic                    mshr_ack_wback;
+    hpdcache_req_offset_t    st0_mshr_check_offset;
+    logic                    refill_updt_sel_victim;
+    hpdcache_req_data_t      refill_core_rsp_rdata;
+
+    hpdcache_set_t           refill_set_q;
+    hpdcache_tag_t           refill_tag_q;
+    hpdcache_way_t           refill_way_q;
+    hpdcache_req_sid_t       refill_sid_q;
+    hpdcache_req_tid_t       refill_tid_q;
+    logic                    refill_need_rsp_q;
+    logic                    refill_is_prefetch_q;
+    logic                    refill_wback_q;
+    hpdcache_word_t          refill_core_rsp_word_q;
+    hpdcache_nline_t         refill_nline_q;
+
+    hpdcache_set_t           refill_set;
+    hpdcache_tag_t           refill_tag;
+    hpdcache_way_t           refill_way;
+    hpdcache_req_sid_t       refill_sid;
+    hpdcache_req_tid_t       refill_tid;
+    logic                    refill_need_rsp;
+    logic                    refill_is_prefetch;
+    logic                    refill_wback;
+    hpdcache_word_t          refill_core_rsp_word;
+    hpdcache_nline_t         refill_nline;
+
+    logic                    mshr_ack_valid;
 
     logic                    st1_rsp_valid;
     logic                    st1_rsp_error;
@@ -364,13 +407,35 @@ import hpdcache_pkg::*;
     hpdcache_rtab_deps_t     st1_rtab_deps;
     logic                    st1_rtab_check;
     logic                    st1_rtab_check_hit;
+    hpdcache_nline_t         st1_mshr_check_nline;
+    logic                    st1_mshr_hit;
+    logic                    st1_mshr_alloc_full;
 
     hpdcache_way_t           refill_way_index;
+    hpdcache_way_vector_t    refill_way_vector;
 
     logic                    rtab_full;
     logic                    rtab_fence;
 
     logic                    hpdcache_init_ready;
+
+    logic                    st2_mshr_alloc;
+    logic                    st2_mshr_alloc_cs;
+    hpdcache_nline_t         st2_mshr_alloc_nline;
+    hpdcache_req_tid_t       st2_mshr_alloc_tid;
+    hpdcache_req_sid_t       st2_mshr_alloc_sid;
+    hpdcache_word_t          st2_mshr_alloc_word;
+    hpdcache_way_vector_t    st2_mshr_alloc_victim_way;
+    logic                    st2_mshr_alloc_need_rsp;
+    logic                    st2_mshr_alloc_is_prefetch;
+    logic                    st2_mshr_alloc_wback;
+    mshr_way_t               st2_mshr_alloc_way;
+    hpdcache_dir_entry_t     refill_dir_entry;
+
+    // Core refill responses FIFO r/w
+    logic refill_core_rsp_valid_w, refill_core_rsp_valid_r;
+    hpdcache_rsp_t refill_core_rsp_w, refill_core_rsp_r;
+
     //  }}}
 
     //  Decoding of the request in stage 0
@@ -516,7 +581,7 @@ import hpdcache_pkg::*;
         .st0_req_is_cmo_fence_i             (st0_req_is_cmo_fence),
         .st0_req_is_cmo_inval_i             (st0_req_is_cmo_inval),
         .st0_req_is_cmo_prefetch_i          (st0_req_is_cmo_prefetch),
-        .st0_req_mshr_check_o               (st0_mshr_check_o),
+        .st0_req_mshr_check_o               (st0_mshr_check),
         .st0_req_cachedir_read_o            (st0_req_cachedir_read),
         .st0_req_cachedata_read_o           (st0_req_cachedata_read),
 
@@ -557,7 +622,7 @@ import hpdcache_pkg::*;
         .st2_mshr_alloc_is_prefetch_i       (st2_mshr_alloc_is_prefetch_q),
         .st2_mshr_alloc_wback_i             (st2_mshr_alloc_wback_q),
         .st2_mshr_alloc_o                   (st2_mshr_alloc_d),
-        .st2_mshr_alloc_cs_o                (st2_mshr_alloc_cs_o),
+        .st2_mshr_alloc_cs_o                (st2_mshr_alloc_cs),
         .st2_mshr_alloc_need_rsp_o          (st2_mshr_alloc_need_rsp_d),
         .st2_mshr_alloc_wback_o             (st2_mshr_alloc_wback_d),
 
@@ -600,12 +665,12 @@ import hpdcache_pkg::*;
         .cachedir_hit_i                     (cachedir_hit_o),
         .cachedir_init_ready_i              (hpdcache_init_ready),
 
-        .st1_mshr_alloc_ready_i             (st1_mshr_alloc_ready_i),
-        .st1_mshr_hit_i                     (st1_mshr_hit_i),
-        .st1_mshr_full_i                    (st1_mshr_alloc_full_i),
+        .st1_mshr_alloc_ready_i             (miss_req_ready_i),
+        .st1_mshr_hit_i                     (st1_mshr_hit),
+        .st1_mshr_full_i                    (st1_mshr_alloc_full),
 
         .refill_busy_i,
-        .refill_core_rsp_valid_i,
+        .refill_core_rsp_valid_i            (refill_core_rsp_valid_r),
 
         .wbuf_write_valid_o                 (wbuf_write_o),
         .wbuf_write_ready_i,
@@ -656,13 +721,6 @@ import hpdcache_pkg::*;
         .val_o (st1_dir_hit_way_index)
     );
 
-    hpdcache_1hot_to_binary #(
-        .N     (HPDcacheCfg.u.ways)
-    ) refill_way_encoder_i(
-        .val_i (refill_way_i),
-        .val_o (refill_way_index)
-    );
-
     assign st1_alloc_rtab = '{
         req       : st1_req,
         way_fetch : st1_dir_hit_way_index
@@ -711,11 +769,11 @@ import hpdcache_pkg::*;
         .wbuf_hit_sent_i                    (wbuf_rtab_hit_sent_i),
         .wbuf_not_ready_i                   (wbuf_rtab_not_ready_i),
 
-        .miss_ready_i                       (st1_mshr_alloc_ready_i),
+        .miss_ready_i                       (miss_req_ready_i),
 
         .refill_i                           (refill_updt_rtab_i),
         .refill_is_error_i,
-        .refill_nline_i,
+        .refill_nline_i                     (refill_nline),
         .refill_way_index_i                 (refill_way_index),
 
         .flush_ack_i                        (flush_ack_i),
@@ -812,6 +870,8 @@ import hpdcache_pkg::*;
     assign st1_req_nline = st1_req_addr[HPDcacheCfg.clOffsetWidth +: HPDcacheCfg.nlineWidth];
 
     assign st1_victim_nline = {st1_dir_victim_tag, st1_req_set};
+    assign refill_updt_sel_victim = ~refill_is_error_i &
+                                    (~refill_is_prefetch | cfg_prefetch_updt_sel_victim_i);
 
     hpdcache_memctrl #(
         .HPDcacheCfg                   (HPDcacheCfg),
@@ -859,10 +919,10 @@ import hpdcache_pkg::*;
         .dir_amo_hit_way_o             (uc_dir_amo_hit_way_o),
 
         .dir_refill_i                  (refill_write_dir_i),
-        .dir_refill_set_i              (refill_set_i),
-        .dir_refill_way_i              (refill_way_i),
-        .dir_refill_entry_i            (refill_dir_entry_i),
-        .dir_refill_updt_sel_victim_i  (refill_updt_sel_victim_i),
+        .dir_refill_set_i              (refill_set),
+        .dir_refill_way_i              (refill_way_vector),
+        .dir_refill_entry_i            (refill_dir_entry),
+        .dir_refill_updt_sel_victim_i  (refill_updt_sel_victim),
 
         .dir_victim_sel_i              (st1_victim_sel),
         .dir_victim_set_i              (st1_req_set),
@@ -923,8 +983,8 @@ import hpdcache_pkg::*;
         .data_flush_read_data_o        (flush_data_read_data_o),
 
         .data_refill_i                 (refill_write_data_i),
-        .data_refill_set_i             (refill_set_i),
-        .data_refill_way_i             (refill_way_i),
+        .data_refill_set_i             (refill_set),
+        .data_refill_way_i             (refill_way_vector),
         .data_refill_word_i            (refill_word_i),
         .data_refill_data_i            (refill_data_i)
     );
@@ -932,6 +992,199 @@ import hpdcache_pkg::*;
     assign st1_dir_hit           = |st1_dir_hit_way;
 
     assign cachedir_hit_o = st1_dir_hit;
+    //  }}}
+
+    //  Miss Status Holding Register component
+    //  {{{
+        if (HPDcacheCfg.u.mshrSets > 1) begin : gen_mshr_set_gt_1
+        //  MSHR ack set and way
+        assign mshr_ack_set = mshr_ack_id_i[0 +: HPDcacheCfg.mshrSetWidth];
+        if (HPDcacheCfg.u.mshrWays > 1) begin : gen_mshr_ack_way_gt_1
+            assign mshr_ack_way = mshr_ack_id_i[HPDcacheCfg.mshrSetWidth +:
+                                                                   HPDcacheCfg.mshrWayWidth];
+        end else begin : gen_mshr_ack_way_eq_1
+            assign mshr_ack_way = '0;
+        end
+    end else begin : gen_mshr_set_eq_1
+        //  MSHR ack set and way
+        assign mshr_ack_set = '0;
+        if (HPDcacheCfg.u.mshrWays > 1) begin : gen_mshr_ack_way_gt_1
+            assign mshr_ack_way = mshr_ack_id_i[0 +: HPDcacheCfg.mshrWayWidth];
+        end else begin : gen_mshr_ack_way_eq_1
+            assign mshr_ack_way = '0;
+        end
+    end
+
+    hpdcache_mshr #(
+        .HPDcacheCfg              (HPDcacheCfg),
+        .hpdcache_nline_t         (hpdcache_nline_t),
+        .hpdcache_tag_t           (hpdcache_tag_t),
+        .hpdcache_set_t           (hpdcache_set_t),
+        .hpdcache_word_t          (hpdcache_word_t),
+        .hpdcache_way_t           (hpdcache_way_t),
+
+        .hpdcache_req_tid_t       (hpdcache_req_tid_t),
+        .hpdcache_req_sid_t       (hpdcache_req_sid_t),
+
+        .mshr_way_t               (mshr_way_t),
+        .mshr_set_t               (mshr_set_t)
+    ) hpdcache_mshr_i(
+        .clk_i,
+        .rst_ni,
+
+        .empty_o                  (mshr_empty_o),
+        .full_o                   (mshr_full_o),
+
+        .check_i                  (st0_mshr_check),
+        .check_set_i              (st0_mshr_check_set),
+        .check_tag_i              (st0_mshr_check_tag),
+        .hit_o                    (st1_mshr_hit),
+        .alloc_i                  (st2_mshr_alloc),
+        .alloc_cs_i               (st2_mshr_alloc_cs),
+        .alloc_nline_i            (st2_mshr_alloc_nline),
+        .alloc_req_id_i           (st2_mshr_alloc_tid),
+        .alloc_src_id_i           (st2_mshr_alloc_sid),
+        .alloc_word_i             (st2_mshr_alloc_word),
+        .alloc_victim_way_i       (mshr_alloc_victim_way_index),
+        .alloc_need_rsp_i         (st2_mshr_alloc_need_rsp),
+        .alloc_is_prefetch_i      (st2_mshr_alloc_is_prefetch),
+        .alloc_wback_i            (st2_mshr_alloc_wback),
+        .alloc_full_o             (st1_mshr_alloc_full),
+        .alloc_way_o              (st2_mshr_alloc_way),
+
+        .ack_i                    (mshr_ack_i),
+        .ack_cs_i                 (mshr_ack_cs_i),
+        .ack_set_i                (mshr_ack_set),
+        .ack_way_i                (mshr_ack_way),
+        .ack_req_id_o             (mshr_ack_req_id),
+        .ack_src_id_o             (mshr_ack_src_id),
+        .ack_cache_set_o          (mshr_ack_cache_set),
+        .ack_cache_way_o          (mshr_ack_cache_way),
+        .ack_cache_tag_o          (mshr_ack_cache_tag),
+        .ack_word_o               (mshr_ack_word),
+        .ack_need_rsp_o           (mshr_ack_need_rsp),
+        .ack_is_prefetch_o        (mshr_ack_is_prefetch),
+        .ack_wback_o              (mshr_ack_wback)
+    );
+
+    hpdcache_1hot_to_binary #(.N(HPDcacheCfg.u.ways)) victim_way_encoder_i(
+        .val_i(st2_mshr_alloc_victim_way),
+        .val_o(mshr_alloc_victim_way_index)
+    );
+
+    hpdcache_decoder #(.N(HPDcacheCfg.wayIndexWidth)) victim_way_decoder_i(
+        .en_i (refill_write_data_i | refill_write_dir_i),
+        .val_i(refill_way),
+        .val_o(refill_way_vector)
+    );
+
+    assign refill_way_index = refill_way;
+
+    always_ff @(posedge clk_i) begin
+        mshr_ack_valid <= mshr_ack_i;
+        if (mshr_ack_i) begin
+            // Set is output at the same cycle as the ack_i is asserted, it is not registered
+            refill_set_q <= mshr_ack_cache_set;
+        end
+        if (mshr_ack_valid) begin
+            refill_way_q <= mshr_ack_cache_way;
+            refill_nline_q <= {mshr_ack_cache_tag, mshr_ack_cache_set};
+            refill_tag_q <= mshr_ack_cache_tag;
+            refill_sid_q <= mshr_ack_src_id;
+            refill_tid_q <= mshr_ack_req_id;
+            refill_need_rsp_q <= mshr_ack_need_rsp;
+            refill_is_prefetch_q <= mshr_ack_is_prefetch;
+            refill_wback_q <= mshr_ack_wback;
+            refill_core_rsp_word_q <= mshr_ack_word;
+        end
+    end
+
+    always_comb begin
+        if (mshr_ack_i) begin
+            refill_set = mshr_ack_cache_set;
+        end else begin
+            refill_set = refill_set_q;
+        end
+
+        if (mshr_ack_valid) begin
+            refill_way = mshr_ack_cache_way;
+            refill_nline = {mshr_ack_cache_tag, mshr_ack_cache_set};
+            refill_tag = mshr_ack_cache_tag;
+            refill_sid = mshr_ack_src_id;
+            refill_tid = mshr_ack_req_id;
+            refill_need_rsp = mshr_ack_need_rsp;
+            refill_is_prefetch = mshr_ack_is_prefetch;
+            refill_wback = mshr_ack_wback;
+            refill_core_rsp_word = mshr_ack_word;
+        end else begin
+            refill_way = refill_way_q;
+            refill_nline = refill_nline_q;
+            refill_tag = refill_tag_q;
+            refill_sid = refill_sid_q;
+            refill_tid = refill_tid_q;
+            refill_need_rsp = refill_need_rsp_q;
+            refill_is_prefetch = refill_is_prefetch_q;
+            refill_wback = refill_wback_q;
+            refill_core_rsp_word = refill_core_rsp_word_q;
+        end
+    end
+
+    //  Write the new entry in the cache directory
+    //  In case of error in the refill response, invalidate pre-allocated cache directory entry
+    assign refill_dir_entry = '{
+        valid   : ~refill_is_error_i,
+        wback   : ~refill_is_error_i & refill_wback,
+        dirty   : 1'b0,
+        fetch   : 1'b0,
+        tag     : refill_tag,
+        default :'0
+    };
+
+    //  refill's width is bigger than the width of the core's interface
+    if (REFILL_REQ_RATIO > 1) begin : gen_core_rsp_data_mux
+        hpdcache_mux #(
+            .NINPUT      (REFILL_REQ_RATIO),
+            .DATA_WIDTH  (HPDcacheCfg.reqDataWidth)
+        ) data_read_rsp_mux_i(
+            .data_i      (refill_data_i),
+            .sel_i       (mshr_ack_word[0 +: $clog2(REFILL_REQ_RATIO)]),
+            .data_o      (refill_core_rsp_rdata)
+        );
+    end
+
+    //  refill's width is equal to the width of the core's interface
+    else begin : gen_core_rsp_eqsize
+        assign refill_core_rsp_rdata = refill_data_i;
+    end
+
+    if (REFILL_CYCLES > 1) begin
+        assign refill_core_rsp_valid_w = mshr_ack_need_rsp & refill_write_data_i
+                                         & (refill_word_i[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)] == mshr_ack_word[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)]);
+    end else begin
+        assign refill_core_rsp_valid_w = mshr_ack_need_rsp & refill_write_data_i;
+    end
+
+    assign refill_core_rsp_w.rdata   = refill_core_rsp_rdata;
+    assign refill_core_rsp_w.sid     = mshr_ack_src_id;
+    assign refill_core_rsp_w.tid     = mshr_ack_req_id;
+    assign refill_core_rsp_w.error   = refill_is_error_i;
+    assign refill_core_rsp_w.aborted = 1'b0;
+
+    hpdcache_fifo_reg #(
+        .FIFO_DEPTH  (1),
+        .FEEDTHROUGH (HPDcacheCfg.u.refillCoreRspFeedthrough),
+        .fifo_data_t (hpdcache_rsp_t)
+    ) i_refill_core_rsp_buf(
+        .clk_i,
+        .rst_ni,
+        .w_i         (refill_core_rsp_valid_w),
+        .wok_o       (/*unused*/),
+        .wdata_i     (refill_core_rsp_w),
+        .r_i         (1'b1),  //  core shall always be ready to consume a response
+        .rok_o       (refill_core_rsp_valid_r),
+        .rdata_o     (refill_core_rsp_r)
+    );
+
     //  }}}
 
     //  Write buffer outputs
@@ -944,19 +1197,38 @@ import hpdcache_pkg::*;
 
     //  Miss handler outputs
     //  {{{
-    assign st0_mshr_check_offset_o      = st0_req.addr_offset;
-    assign st1_mshr_check_nline_o       = st1_req_nline;
-    assign st2_mshr_alloc_o             = st2_mshr_alloc_q;
-    assign st2_mshr_alloc_nline_o       = st2_mshr_alloc_addr_q[HPDcacheCfg.clOffsetWidth +:
+    assign st0_mshr_check_offset      = st0_req.addr_offset;
+    assign st0_mshr_check_tag         = st1_req_nline[HPDcacheCfg.setWidth +: HPDcacheCfg.tagWidth];
+    assign st0_mshr_check_set         = st0_req.addr_offset[HPDcacheCfg.clOffsetWidth +: HPDcacheCfg.setWidth];
+
+    assign st1_mshr_check_nline       = st1_req_nline;
+    assign st2_mshr_alloc             = st2_mshr_alloc_q;
+    assign st2_mshr_alloc_nline       = st2_mshr_alloc_addr_q[HPDcacheCfg.clOffsetWidth +:
                                                                 HPDcacheCfg.nlineWidth];
-    assign st2_mshr_alloc_tid_o         = st2_mshr_alloc_tid_q;
-    assign st2_mshr_alloc_sid_o         = st2_mshr_alloc_sid_q;
-    assign st2_mshr_alloc_word_o        = st2_mshr_alloc_addr_q[HPDcacheCfg.wordByteIdxWidth +:
+    assign st2_mshr_alloc_tid         = st2_mshr_alloc_tid_q;
+    assign st2_mshr_alloc_sid         = st2_mshr_alloc_sid_q;
+    assign st2_mshr_alloc_word        = st2_mshr_alloc_addr_q[HPDcacheCfg.wordByteIdxWidth +:
                                                                 HPDcacheCfg.clWordIdxWidth];
-    assign st2_mshr_alloc_victim_way_o  = st2_mshr_alloc_victim_way_q;
-    assign st2_mshr_alloc_need_rsp_o    = st2_mshr_alloc_need_rsp_q;
-    assign st2_mshr_alloc_is_prefetch_o = st2_mshr_alloc_is_prefetch_q;
-    assign st2_mshr_alloc_wback_o       = st2_mshr_alloc_wback_q;
+    assign st2_mshr_alloc_victim_way  = st2_mshr_alloc_victim_way_q;
+    assign st2_mshr_alloc_need_rsp    = st2_mshr_alloc_need_rsp_q;
+    assign st2_mshr_alloc_is_prefetch = st2_mshr_alloc_is_prefetch_q;
+    assign st2_mshr_alloc_wback       = st2_mshr_alloc_wback_q;
+
+    if ((HPDcacheCfg.u.mshrSets > 1) && (HPDcacheCfg.u.mshrWays > 1))
+    begin : gen_mem_id_mshr_sets_and_ways_gt_1
+        assign miss_req_tid_o = hpdcache_mshr_id_t'({
+                st2_mshr_alloc_way, st2_mshr_alloc_nline[0 +: HPDcacheCfg.mshrSetWidth]});
+    end else if (HPDcacheCfg.u.mshrSets > 1) begin : gen_mem_id_mshr_sets_gt_1
+        assign miss_req_tid_o = hpdcache_mshr_id_t'(
+                st2_mshr_alloc_nline[0 +: HPDcacheCfg.mshrSetWidth]);
+    end else if (HPDcacheCfg.u.mshrWays > 1) begin : gen_mem_id_mshr_ways_gt_1
+        assign miss_req_tid_o = hpdcache_mshr_id_t'(st2_mshr_alloc_way);
+    end else begin : gen_mem_id_mshr_sets_and_ways_eq_1
+        assign miss_req_tid_o = '0;
+    end
+
+    assign miss_req_nline_o = st2_mshr_alloc_nline;
+    assign miss_req_valid_o = st2_mshr_alloc_q; // TODO: check ready signal
     //  }}}
 
     //  Uncacheable request handler outputs
@@ -1016,16 +1288,16 @@ import hpdcache_pkg::*;
 
     //  Control of the response to the core
     //  {{{
-    assign core_rsp_valid_o   = refill_core_rsp_valid_i |
+    assign core_rsp_valid_o   = refill_core_rsp_valid_r |
                                 (uc_core_rsp_valid_i & uc_core_rsp_ready_o) |
                                 st1_rsp_valid;
-    assign core_rsp_o.rdata   = (refill_core_rsp_valid_i ? refill_core_rsp_i.rdata :
+    assign core_rsp_o.rdata   = (refill_core_rsp_valid_r ? refill_core_rsp_r.rdata :
                                 (uc_core_rsp_valid_i     ? uc_core_rsp_i.rdata : st1_read_data));
-    assign core_rsp_o.sid     = (refill_core_rsp_valid_i ? refill_core_rsp_i.sid :
+    assign core_rsp_o.sid     = (refill_core_rsp_valid_r ? refill_core_rsp_r.sid :
                                 (uc_core_rsp_valid_i     ? uc_core_rsp_i.sid : st1_req.sid));
-    assign core_rsp_o.tid     = (refill_core_rsp_valid_i ? refill_core_rsp_i.tid :
+    assign core_rsp_o.tid     = (refill_core_rsp_valid_r ? refill_core_rsp_r.tid :
                                 (uc_core_rsp_valid_i     ? uc_core_rsp_i.tid : st1_req.tid));
-    assign core_rsp_o.error   = (refill_core_rsp_valid_i ? refill_core_rsp_i.error :
+    assign core_rsp_o.error   = (refill_core_rsp_valid_r ? refill_core_rsp_r.error :
                                 (uc_core_rsp_valid_i     ? uc_core_rsp_i.error : st1_rsp_error));
     assign core_rsp_o.aborted = st1_rsp_aborted;
     //  }}}
