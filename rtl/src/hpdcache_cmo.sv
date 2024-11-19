@@ -51,6 +51,7 @@ import hpdcache_pkg::*;
     //  {{{
     input  logic                  wbuf_empty_i,
     input  logic                  mshr_empty_i,
+    input  logic                  refill_busy_i,
     input  logic                  rtab_empty_i,
     input  logic                  ctrl_empty_i,
     //  }}}
@@ -216,7 +217,7 @@ import hpdcache_pkg::*;
                             cmoh_addr_d    = req_addr_i;
                             cmoh_way_reset = 1'b1;
                             cmoh_set_reset = 1'b1;
-                            if (mshr_empty_i && rtab_empty_i && ctrl_empty_i) begin // CMO
+                            if (mshr_empty_i && ~refill_busy_i && rtab_empty_i && ctrl_empty_i) begin // CMO
                                 unique if (req_op_i.is_inval_by_nline) begin
                                     cmoh_fsm_d = CMOH_INVAL_CHECK_NLINE;
                                 end else if (req_op_i.is_inval_all) begin
@@ -248,7 +249,7 @@ import hpdcache_pkg::*;
                 end
             end
             CMOH_WAIT_MSHR_RTAB_EMPTY: begin
-                if (mshr_empty_i && rtab_empty_i && ctrl_empty_i) begin
+                if (mshr_empty_i && ~refill_busy_i && rtab_empty_i && ctrl_empty_i) begin
                     unique if (cmoh_op_q.is_inval_by_nline) begin
                         cmoh_fsm_d = CMOH_INVAL_CHECK_NLINE;
                     end else if (cmoh_op_q.is_inval_all) begin

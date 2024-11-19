@@ -64,6 +64,7 @@ import hpdcache_pkg::*;
     //  {{{
     input  logic                  wbuf_empty_i,
     input  logic                  mshr_empty_i,
+    input  logic                  refill_busy_i,
     input  logic                  rtab_empty_i,
     input  logic                  ctrl_empty_i,
     input  logic                  flush_empty_i,
@@ -309,6 +310,7 @@ import hpdcache_pkg::*;
 
     assign no_pend_trans = wbuf_empty_i &&
                            mshr_empty_i &&
+                           ~refill_busy_i &&
                            rtab_empty_i &&
                            ctrl_empty_i &&
                            flush_empty_i;

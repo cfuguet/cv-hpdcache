@@ -773,6 +773,7 @@ import hpdcache_pkg::*;
 
         .wbuf_empty_i                  (wbuf_empty_o),
         .mshr_empty_i                  (miss_mshr_empty),
+        .refill_busy_i                 (refill_busy),
         .rtab_empty_i                  (rtab_empty),
         .ctrl_empty_i                  (ctrl_empty),
         .flush_empty_i                 (flush_empty),
@@ -859,6 +860,7 @@ import hpdcache_pkg::*;
 
         .wbuf_empty_i                  (wbuf_empty_o),
         .mshr_empty_i                  (miss_mshr_empty),
+        .refill_busy_i                 (refill_busy),
         .rtab_empty_i                  (rtab_empty),
         .ctrl_empty_i                  (ctrl_empty),
 
