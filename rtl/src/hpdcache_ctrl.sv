@@ -333,7 +333,6 @@ import hpdcache_pkg::*;
     logic                    refill_is_prefetch_q;
     logic                    refill_wback_q;
     hpdcache_word_t          refill_core_rsp_word_q;
-    hpdcache_nline_t         refill_nline_q;
 
     hpdcache_set_t           refill_set;
     hpdcache_tag_t           refill_tag;
@@ -1088,7 +1087,6 @@ import hpdcache_pkg::*;
         end
         if (mshr_ack_valid) begin
             refill_way_q <= mshr_ack_cache_way;
-            refill_nline_q <= {mshr_ack_cache_tag, mshr_ack_cache_set};
             refill_tag_q <= mshr_ack_cache_tag;
             refill_sid_q <= mshr_ack_src_id;
             refill_tid_q <= mshr_ack_req_id;
@@ -1108,7 +1106,6 @@ import hpdcache_pkg::*;
 
         if (mshr_ack_valid) begin
             refill_way = mshr_ack_cache_way;
-            refill_nline = {mshr_ack_cache_tag, mshr_ack_cache_set};
             refill_tag = mshr_ack_cache_tag;
             refill_sid = mshr_ack_src_id;
             refill_tid = mshr_ack_req_id;
@@ -1118,7 +1115,6 @@ import hpdcache_pkg::*;
             refill_core_rsp_word = mshr_ack_word;
         end else begin
             refill_way = refill_way_q;
-            refill_nline = refill_nline_q;
             refill_tag = refill_tag_q;
             refill_sid = refill_sid_q;
             refill_tid = refill_tid_q;
@@ -1128,6 +1124,8 @@ import hpdcache_pkg::*;
             refill_core_rsp_word = refill_core_rsp_word_q;
         end
     end
+
+    assign refill_nline = {refill_tag, refill_set};
 
     //  Write the new entry in the cache directory
     //  In case of error in the refill response, invalidate pre-allocated cache directory entry
@@ -1147,7 +1145,7 @@ import hpdcache_pkg::*;
             .DATA_WIDTH  (HPDcacheCfg.reqDataWidth)
         ) data_read_rsp_mux_i(
             .data_i      (refill_data_i),
-            .sel_i       (mshr_ack_word[0 +: $clog2(REFILL_REQ_RATIO)]),
+            .sel_i       (refill_core_rsp_word[0 +: $clog2(REFILL_REQ_RATIO)]),
             .data_o      (refill_core_rsp_rdata)
         );
     end
@@ -1157,11 +1155,17 @@ import hpdcache_pkg::*;
         assign refill_core_rsp_rdata = refill_data_i;
     end
 
-    if (REFILL_CYCLES > 1) begin
-        assign refill_core_rsp_valid_w = mshr_ack_need_rsp & refill_write_data_i
-                                         & (refill_word_i[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)] == mshr_ack_word[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)]);
-    end else begin
-        assign refill_core_rsp_valid_w = mshr_ack_need_rsp & refill_write_data_i;
+    if (REFILL_CYCLES > 1) begin : gen_refill_core_rsp_multicycle
+        logic refill_writing_rsp_word;
+        assign refill_writing_rsp_word = refill_write_data_i
+                                       & (refill_word_i[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)] == refill_core_rsp_word[$bits(hpdcache_word_t)-1 -: $clog2(REFILL_CYCLES)]);
+        // Respond to the core if it needs a response and
+        // a) there is an error from memory AND we just got an ack from the miss handler
+        // b) we are refilling data from memory AND the current word chunk being refilled is the requested
+        assign refill_core_rsp_valid_w = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_writing_rsp_word);
+    end else begin : gen_refill_core_rsp
+        // Same as in the previous comment but we don't need to check the current word, as the whole cacheline is being written in a single cycle
+        assign refill_core_rsp_valid_w = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_write_data_i);
     end
 
     assign refill_core_rsp_w.rdata   = refill_core_rsp_rdata;
