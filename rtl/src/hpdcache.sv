@@ -187,6 +187,11 @@ import hpdcache_pkg::*;
 
     //  Declaration of internal signals
     //  {{{
+    logic                  core_req_valid [HPDcacheCfg.u.nRequesters];
+    logic                  core_req_ready [HPDcacheCfg.u.nRequesters];
+    logic                  core_rsp_valid [HPDcacheCfg.u.nBanks];
+    hpdcache_rsp_t         core_rsp       [HPDcacheCfg.u.nBanks];
+
     logic                  refill_req_valid;
     logic                  refill_req_ready;
     logic                  refill_is_error;
@@ -303,15 +308,12 @@ import hpdcache_pkg::*;
     logic                  rtab_empty;
     logic                  ctrl_empty;
 
-    logic                  core_rsp_valid;
-    hpdcache_rsp_t         core_rsp;
-
-    logic                  arb_req_valid;
-    logic                  arb_req_ready;
-    hpdcache_req_t         arb_req;
-    logic                  arb_abort;
-    hpdcache_tag_t         arb_tag;
-    hpdcache_pma_t         arb_pma;
+    logic                  bank_req_valid [HPDcacheCfg.u.nBanks];
+    logic                  bank_req_ready [HPDcacheCfg.u.nBanks];
+    hpdcache_req_t         bank_req       [HPDcacheCfg.u.nBanks];
+    logic                  bank_abort     [HPDcacheCfg.u.nBanks];
+    hpdcache_tag_t         bank_tag       [HPDcacheCfg.u.nBanks];
+    hpdcache_pma_t         bank_pma       [HPDcacheCfg.u.nBanks];
 
     logic                  mem_req_read_miss_ready;
     logic                  mem_req_read_miss_valid;
@@ -384,38 +386,6 @@ import hpdcache_pkg::*;
     hpdcache_mshr_id_t     mshr_ack_id [HPDcacheCfg.u.nBanks];
     //  }}}
 
-    //  Requesters arbiter
-    //  {{{
-    hpdcache_core_arbiter #(
-        .HPDcacheCfg                        (HPDcacheCfg),
-        .hpdcache_tag_t                     (hpdcache_tag_t),
-        .hpdcache_req_t                     (hpdcache_req_t),
-        .hpdcache_rsp_t                     (hpdcache_rsp_t)
-    ) core_req_arbiter_i (
-        .clk_i,
-        .rst_ni,
-
-        .core_req_valid_i,
-        .core_req_ready_o,
-        .core_req_i,
-        .core_req_abort_i,
-        .core_req_tag_i,
-        .core_req_pma_i,
-
-        .core_rsp_valid_i                   (core_rsp_valid),
-        .core_rsp_i                         (core_rsp),
-        .core_rsp_valid_o,
-        .core_rsp_o,
-
-        .arb_req_valid_o                    (arb_req_valid),
-        .arb_req_ready_i                    (arb_req_ready),
-        .arb_req_o                          (arb_req),
-        .arb_abort_o                        (arb_abort),
-        .arb_tag_o                          (arb_tag),
-        .arb_pma_o                          (arb_pma)
-    );
-    //  }}}
-
     //  HPDcache controller
     //  {{{
     if (HPDcacheCfg.u.wtEn && HPDcacheCfg.u.wbEn) begin : gen_cfg_default_wt_wb
@@ -426,9 +396,60 @@ import hpdcache_pkg::*;
         assign cfg_default_wb = 1'b1;
     end
 
+    //  bank crossbar
+    //  {{{
+    localparam BankIdWidth = HPDcacheCfg.u.nBanks > 1 ? $clog2(HPDcacheCfg.u.nBanks) : 1;
+    typedef logic [BankIdWidth-1:0] bank_id_t;
+    typedef bank_id_t[2**BankIdWidth-1:0] bank_rt_t;
+
+    function automatic bank_rt_t buildBankRt();
+        bank_rt_t ret;
+        for (int unsigned i = 0; i < 2**BankIdWidth; i++) begin
+            ret[i] = i % HPDcacheCfg.u.nBanks;
+        end
+        return ret;
+    endfunction
+
+    localparam bank_rt_t bank_rt = buildBankRt();
+
+    hpdcache_bank_xbar #(
+        .HPDcacheCfg                        (HPDcacheCfg),
+        .hpdcache_tag_t                     (hpdcache_tag_t),
+        .hpdcache_req_t                     (hpdcache_req_t),
+        .hpdcache_rsp_t                     (hpdcache_rsp_t),
+        .routing_table_t                    (bank_rt_t),
+        .offStart                           (HPDcacheCfg.clOffsetWidth),
+        .offWidth                           (BankIdWidth),
+        .rt                                 (bank_rt)
+    ) bank_xbar_i(
+        .clk_i,
+        .rst_ni,
+
+        .core_req_valid_i,
+        .core_req_ready_o,
+        .core_req_i,
+        .core_req_abort_i,
+        .core_req_tag_i,
+        .core_req_pma_i,
+        .core_rsp_valid_i                   (core_rsp_valid),
+        .core_rsp_i                         (core_rsp),
+        .core_rsp_valid_o,
+        .core_rsp_o,
+
+        .bank_req_valid_o                   (bank_req_valid),
+        .bank_req_ready_i                   (bank_req_ready),
+        .bank_req_o                         (bank_req),
+        .bank_abort_o                       (bank_abort),
+        .bank_tag_o                         (bank_tag),
+        .bank_pma_o                         (bank_pma)
+    );
+    //  }}}
+
     generate
-        genvar bank_id;
-        for (bank_id = 0; bank_id < HPDcacheCfg.u.nBanks; bank_id++) begin: gen_banks
+        genvar bankId;
+        for (bankId = 0; bankId < HPDcacheCfg.u.nBanks; bankId++) begin: gen_banks
+            //  bank controller
+            //  {{{
             hpdcache_ctrl #(
                 .HPDcacheCfg                        (HPDcacheCfg),
                 .hpdcache_nline_t                   (hpdcache_nline_t),
@@ -460,28 +481,28 @@ import hpdcache_pkg::*;
 
                 .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
 
-                .core_req_valid_i                   (arb_req_valid),
-                .core_req_ready_o                   (arb_req_ready),
-                .core_req_i                         (arb_req),
-                .core_req_abort_i                   (arb_abort),
-                .core_req_tag_i                     (arb_tag),
-                .core_req_pma_i                     (arb_pma),
+                .core_req_valid_i                   (bank_req_valid[bankId]),
+                .core_req_ready_o                   (bank_req_ready[bankId]),
+                .core_req_i                         (bank_req[bankId]),
+                .core_req_abort_i                   (bank_abort[bankId]),
+                .core_req_tag_i                     (bank_tag[bankId]),
+                .core_req_pma_i                     (bank_pma[bankId]),
 
-                .core_rsp_valid_o                   (core_rsp_valid),
-                .core_rsp_o                         (core_rsp),
+                .core_rsp_valid_o                   (core_rsp_valid[bankId]),
+                .core_rsp_o                         (core_rsp[bankId]),
 
                 .wbuf_flush_i,
 
                 .cachedir_hit_o                     (/* unused */),
 
-                .miss_req_valid_o                   (miss_req_valid[bank_id]),
-                .miss_req_ready_i                   (miss_req_ready[bank_id]),
-                .miss_req_nline_o                   (miss_req_nline[bank_id]),
-                .miss_req_tid_o                     (miss_req_tid[bank_id]),
+                .miss_req_valid_o                   (miss_req_valid[bankId]),
+                .miss_req_ready_i                   (miss_req_ready[bankId]),
+                .miss_req_nline_o                   (miss_req_nline[bankId]),
+                .miss_req_tid_o                     (miss_req_tid[bankId]),
 
-                .mshr_ack_i                         (mshr_ack[bank_id]),
-                .mshr_ack_cs_i                      (mshr_ack_cs[bank_id]),
-                .mshr_ack_id_i                      (mshr_ack_id[bank_id]),
+                .mshr_ack_i                         (mshr_ack[bankId]),
+                .mshr_ack_cs_i                      (mshr_ack_cs[bankId]),
+                .mshr_ack_id_i                      (mshr_ack_id[bankId]),
 
                 .mshr_full_o                        (/* unused */),
                 .mshr_empty_o                       (miss_mshr_empty),
@@ -606,6 +627,7 @@ import hpdcache_pkg::*;
                 .evt_stall_refill_o,
                 .evt_stall_o
             );
+            //  }}}
         end
     endgenerate
 
