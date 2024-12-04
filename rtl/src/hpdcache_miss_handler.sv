@@ -155,9 +155,6 @@ import hpdcache_pkg::*;
     hpdcache_refill_data_t   refill_fifo_resp_data_rdata;
     logic                    refill_fifo_resp_data_r;
 
-    logic                    mshr_alloc;
-    logic                    mshr_alloc_cs;
-
     core_miss_req_t          miss_req_w      [HPDcacheCfg.u.nBanks];
     core_miss_req_t [HPDcacheCfg.u.nBanks-1:0]         miss_fifo_rdata ;
     logic [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rok   ;
@@ -286,9 +283,9 @@ import hpdcache_pkg::*;
     //      ask permission to the refill arbiter if there is a pending refill
     assign refill_req_valid_o  = refill_fsm_q == REFILL_IDLE ? refill_fifo_resp_meta_rok : 1'b0;
 
-    if (HPDcacheCfg.u.nBanks > 1) begin
+    if (HPDcacheCfg.u.nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
         assign refill_bank_id = refill_fifo_resp_meta_rdata.r_id[$bits(hpdcache_mem_id_t)-1 -: $clog2(HPDcacheCfg.u.nBanks)];
-    end else begin
+    end else begin : gen_refill_bank_id_nbanks_not_gt_1
         assign refill_bank_id = 0;
     end
 

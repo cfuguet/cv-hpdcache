@@ -187,8 +187,6 @@ import hpdcache_pkg::*;
 
     //  Declaration of internal signals
     //  {{{
-    logic                  core_req_valid [HPDcacheCfg.u.nRequesters];
-    logic                  core_req_ready [HPDcacheCfg.u.nRequesters];
     logic                  core_rsp_valid [HPDcacheCfg.u.nBanks];
     hpdcache_rsp_t         core_rsp       [HPDcacheCfg.u.nBanks];
 
@@ -196,10 +194,6 @@ import hpdcache_pkg::*;
     logic                  refill_req_ready;
     logic                  refill_is_error;
     logic                  refill_busy;
-    logic                  refill_updt_sel_victim;
-    hpdcache_set_t         refill_set;
-    hpdcache_way_vector_t  refill_way;
-    hpdcache_dir_entry_t   refill_dir_entry;
     logic                  refill_write_dir;
     logic                  refill_write_data;
     hpdcache_word_t        refill_word;
@@ -405,7 +399,7 @@ import hpdcache_pkg::*;
     function automatic bank_rt_t buildBankRt();
         bank_rt_t ret;
         for (int unsigned i = 0; i < 2**BankIdWidth; i++) begin
-            ret[i] = i % HPDcacheCfg.u.nBanks;
+            ret[i] = bank_id_t'(i % HPDcacheCfg.u.nBanks);
         end
         return ret;
     endfunction

@@ -995,7 +995,7 @@ import hpdcache_pkg::*;
 
     //  Miss Status Holding Register component
     //  {{{
-        if (HPDcacheCfg.u.mshrSets > 1) begin : gen_mshr_set_gt_1
+    if (HPDcacheCfg.u.mshrSets > 1) begin : gen_mshr_set_gt_1
         //  MSHR ack set and way
         assign mshr_ack_set = mshr_ack_id_i[0 +: HPDcacheCfg.mshrSetWidth];
         if (HPDcacheCfg.u.mshrWays > 1) begin : gen_mshr_ack_way_gt_1

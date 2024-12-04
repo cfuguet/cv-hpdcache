@@ -29,9 +29,11 @@ module hpdcache_lint
   import hpdcache_pkg::*;
 #(
   localparam int unsigned HPDCACHE_NREQUESTERS = 1,
+  localparam int unsigned HPDCACHE_NBANKS = 2,
 
   localparam hpdcache_pkg::hpdcache_user_cfg_t HPDcacheUserCfg = '{
       nRequesters: HPDCACHE_NREQUESTERS,
+      nBanks: HPDCACHE_NBANKS,
       paWidth: 56,
       wordWidth: 64,
       sets: 64,
