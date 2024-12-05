@@ -114,6 +114,7 @@ import hpdcache_pkg::*;
                                                 HPDcacheCfg.u.reqWords;
     localparam hpdcache_uint REFILL_LAST_CHUNK_WORD = HPDcacheCfg.u.clWords -
                                                       HPDcacheCfg.u.accessWords;
+    localparam hpdcache_uint BANK_ID_WIDTH = $clog2(HPDcacheCfg.u.nBanks);
 
     typedef enum logic {
         MISS_REQ_IDLE = 1'b0,
@@ -159,14 +160,14 @@ import hpdcache_pkg::*;
     logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_rok;
     logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_r;
 
-    mem_miss_req_t           miss_req_w [HPDcacheCfg.u.nBanks];
-    logic                    miss_arb_ready;
-    mem_miss_req_t           miss_arb_req;
-    hpdcache_nline_t         miss_send_nline_d, miss_send_nline_q;
-    hpdcache_mem_id_t        miss_send_id_d, miss_send_id_q;
-    logic [$clog2(HPDcacheCfg.u.nBanks)-1:0] miss_bank_id;
+    mem_miss_req_t            miss_req_w [HPDcacheCfg.u.nBanks];
+    logic                     miss_arb_ready;
+    mem_miss_req_t            miss_arb_req;
+    hpdcache_nline_t          miss_send_nline_d, miss_send_nline_q;
+    hpdcache_mem_id_t         miss_send_id_d, miss_send_id_q;
+    logic [BANK_ID_WIDTH-1:0] miss_bank_id;
 
-    logic [$clog2(HPDcacheCfg.u.nBanks)-1:0] refill_bank_id;
+    logic [BANK_ID_WIDTH-1:0] refill_bank_id;
     //  }}}
 
     //  Miss Request FIFOs & MUX
@@ -289,7 +290,8 @@ import hpdcache_pkg::*;
     assign refill_req_valid_o  = refill_fsm_q == REFILL_IDLE ? refill_fifo_resp_meta_rok : 1'b0;
 
     if (HPDcacheCfg.u.nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
-        assign refill_bank_id = refill_fifo_resp_meta_rdata.r_id[$bits(hpdcache_mem_id_t)-1 -: $clog2(HPDcacheCfg.u.nBanks)];
+        assign refill_bank_id =
+            refill_fifo_resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
     end else begin : gen_refill_bank_id_nbanks_not_gt_1
         assign refill_bank_id = 0;
     end
