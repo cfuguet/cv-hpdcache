@@ -96,7 +96,7 @@ import hpdcache_pkg::*;
     output logic                  miss_req_valid_o,
     input  logic                  miss_req_ready_i,
     output hpdcache_nline_t       miss_req_nline_o,
-    output hpdcache_req_tid_t     miss_req_tid_o,
+    output hpdcache_mshr_id_t     miss_req_mshr_id_o,
 
     input  logic                  mshr_ack_i,
     input  logic                  mshr_ack_cs_i,
@@ -287,7 +287,6 @@ import hpdcache_pkg::*;
     //  Definition of internal signals
     //  {{{
     hpdcache_req_t           st0_req;
-    hpdcache_pma_t           st0_req_pma;
     logic                    st0_req_is_error;
     logic                    st0_req_is_uncacheable;
     logic                    st0_req_is_load;
@@ -354,8 +353,6 @@ import hpdcache_pkg::*;
     logic                    st1_req_abort;
     logic                    st1_req_cachedata_write;
     logic                    st1_req_cachedata_write_enable;
-    hpdcache_pma_t           st1_req_pma;
-    hpdcache_tag_t           st1_req_tag;
     hpdcache_set_t           st1_req_set;
     hpdcache_word_t          st1_req_word;
     hpdcache_nline_t         st1_req_nline;
@@ -440,7 +437,9 @@ import hpdcache_pkg::*;
     //  Decoding of the request in stage 0
     //  {{{
     always_comb
-    begin : st0_req_pma_comb
+    begin : st0_req_sel_comb
+        automatic hpdcache_pma_t st0_req_pma;
+
         st0_req_pma = core_req_i.pma;
 
         //  force uncacheable requests if the cache is disabled
@@ -455,31 +454,12 @@ import hpdcache_pkg::*;
         if (!HPDcacheCfg.u.wbEn) begin
             st0_req_pma.wr_policy_hint = HPDCACHE_WR_POLICY_WT;
         end
-    end
 
-    //     Select between request in the replay table or a new core requests
-    assign st0_req.addr_offset  = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.addr_offset
-                                                         : core_req_i.addr_offset;
-    assign st0_req.addr_tag     = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.addr_tag
-                                                         : core_req_i.addr_tag;
-    assign st0_req.wdata        = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.wdata
-                                                         : core_req_i.wdata;
-    assign st0_req.op           = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.op
-                                                         : core_req_i.op;
-    assign st0_req.be           = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.be
-                                                         : core_req_i.be;
-    assign st0_req.size         = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.size
-                                                         : core_req_i.size;
-    assign st0_req.sid          = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.sid
-                                                         : core_req_i.sid;
-    assign st0_req.tid          = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.tid
-                                                         : core_req_i.tid;
-    assign st0_req.need_rsp     = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.need_rsp
-                                                         : core_req_i.need_rsp;
-    assign st0_req.phys_indexed = st0_rtab_pop_try_valid ? 1'b1 :
-                                                           core_req_i.phys_indexed;
-    assign st0_req.pma          = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.pma
-                                                         : st0_req_pma;
+        //  Select between request in the replay table or a new core requests
+        st0_req              = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req : core_req_i;
+        st0_req.phys_indexed = st0_rtab_pop_try_valid ? 1'b1 : core_req_i.phys_indexed;
+        st0_req.pma          = st0_rtab_pop_try_valid ? st0_rtab_pop_try_req.req.pma : st0_req_pma;
+    end
 
     //     Check if the request from the RTAB has been tagged with an error
     assign st0_req_is_error = st0_rtab_pop_try_valid & st0_rtab_pop_try_error;
@@ -497,7 +477,10 @@ import hpdcache_pkg::*;
     //  Decode operation in stage 1
     //  {{{
     always_comb
-    begin : st1_req_pma_comb
+    begin : st1_req_sel_comb
+        automatic hpdcache_tag_t st1_req_tag;
+        automatic hpdcache_pma_t st1_req_pma;
+
         st1_req_pma = st1_req_q.phys_indexed ? st1_req_q.pma : core_req_pma_i;
 
         //  force uncacheable requests if the cache is disabled
@@ -512,24 +495,15 @@ import hpdcache_pkg::*;
         if (!HPDcacheCfg.u.wbEn) begin
             st1_req_pma.wr_policy_hint = HPDCACHE_WR_POLICY_WT;
         end
+
+        //         In case of replay or physically-indexed cache, the tag and PMA come
+        //         from stage 0. Otherwise, this information come directly from the
+        //         requester in stage 1
+        st1_req_tag      = st1_req_q.phys_indexed ? st1_req_q.addr_tag : core_req_tag_i;
+        st1_req          = st1_req_q;
+        st1_req.addr_tag = st1_req_rtab_q ? st1_req_q.addr_tag : st1_req_tag;
+        st1_req.pma      = st1_req_rtab_q ? st1_req_q.pma : st1_req_pma;
     end
-
-    //         In case of replay or physically-indexed cache, the tag and PMA come
-    //         from stage 0. Otherwise, this information come directly from the
-    //         requester in stage 1
-    assign st1_req_tag = st1_req_q.phys_indexed ? st1_req_q.addr_tag : core_req_tag_i;
-
-    assign st1_req.addr_offset     = st1_req_q.addr_offset;
-    assign st1_req.addr_tag        = st1_req_rtab_q ? st1_req_q.addr_tag : st1_req_tag;
-    assign st1_req.wdata           = st1_req_q.wdata;
-    assign st1_req.op              = st1_req_q.op;
-    assign st1_req.be              = st1_req_q.be;
-    assign st1_req.size            = st1_req_q.size;
-    assign st1_req.sid             = st1_req_q.sid;
-    assign st1_req.tid             = st1_req_q.tid;
-    assign st1_req.need_rsp        = st1_req_q.need_rsp;
-    assign st1_req.phys_indexed    = st1_req_q.phys_indexed;
-    assign st1_req.pma             = st1_req_rtab_q ? st1_req_q.pma : st1_req_pma;
 
     //         A requester can ask to abort a request it initiated on the
     //         previous cycle (stage 0). Useful in case of TLB miss for example
@@ -1220,15 +1194,15 @@ import hpdcache_pkg::*;
 
     if ((HPDcacheCfg.u.mshrSets > 1) && (HPDcacheCfg.u.mshrWays > 1))
     begin : gen_mem_id_mshr_sets_and_ways_gt_1
-        assign miss_req_tid_o = hpdcache_mshr_id_t'({
+        assign miss_req_mshr_id_o = hpdcache_mshr_id_t'({
                 st2_mshr_alloc_way, st2_mshr_alloc_nline[0 +: HPDcacheCfg.mshrSetWidth]});
     end else if (HPDcacheCfg.u.mshrSets > 1) begin : gen_mem_id_mshr_sets_gt_1
-        assign miss_req_tid_o = hpdcache_mshr_id_t'(
+        assign miss_req_mshr_id_o = hpdcache_mshr_id_t'(
                 st2_mshr_alloc_nline[0 +: HPDcacheCfg.mshrSetWidth]);
     end else if (HPDcacheCfg.u.mshrWays > 1) begin : gen_mem_id_mshr_ways_gt_1
-        assign miss_req_tid_o = hpdcache_mshr_id_t'(st2_mshr_alloc_way);
+        assign miss_req_mshr_id_o = hpdcache_mshr_id_t'(st2_mshr_alloc_way);
     end else begin : gen_mem_id_mshr_sets_and_ways_eq_1
-        assign miss_req_tid_o = '0;
+        assign miss_req_mshr_id_o = '0;
     end
 
     assign miss_req_nline_o = st2_mshr_alloc_nline;

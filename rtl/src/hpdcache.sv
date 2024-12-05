@@ -370,10 +370,10 @@ import hpdcache_pkg::*;
     localparam logic [HPDcacheCfg.u.memIdWidth-1:0] HPDCACHE_UC_WRITE_ID =
         {HPDcacheCfg.u.memIdWidth{1'b1}};
 
-    logic                  miss_req_valid [HPDcacheCfg.u.nBanks];
-    logic                  miss_req_ready [HPDcacheCfg.u.nBanks];
-    hpdcache_nline_t       miss_req_nline [HPDcacheCfg.u.nBanks];
-    hpdcache_req_tid_t     miss_req_tid   [HPDcacheCfg.u.nBanks];
+    logic                  miss_req_valid   [HPDcacheCfg.u.nBanks];
+    logic                  miss_req_ready   [HPDcacheCfg.u.nBanks];
+    hpdcache_nline_t       miss_req_nline   [HPDcacheCfg.u.nBanks];
+    hpdcache_mshr_id_t     miss_req_mshr_id [HPDcacheCfg.u.nBanks];
 
     logic                  mshr_ack    [HPDcacheCfg.u.nBanks];
     logic                  mshr_ack_cs [HPDcacheCfg.u.nBanks];
@@ -492,7 +492,7 @@ import hpdcache_pkg::*;
                 .miss_req_valid_o                   (miss_req_valid[bankId]),
                 .miss_req_ready_i                   (miss_req_ready[bankId]),
                 .miss_req_nline_o                   (miss_req_nline[bankId]),
-                .miss_req_tid_o                     (miss_req_tid[bankId]),
+                .miss_req_mshr_id_o                 (miss_req_mshr_id[bankId]),
 
                 .mshr_ack_i                         (mshr_ack[bankId]),
                 .mshr_ack_cs_i                      (mshr_ack_cs[bankId]),
@@ -728,7 +728,7 @@ import hpdcache_pkg::*;
         .miss_req_valid_i                   (miss_req_valid),
         .miss_req_ready_o                   (miss_req_ready),
         .miss_req_nline_i                   (miss_req_nline),
-        .miss_req_tid_i                     (miss_req_tid),
+        .miss_req_mshr_id_i                 (miss_req_mshr_id),
 
         .refill_req_ready_i                 (refill_req_ready),
         .refill_req_valid_o                 (refill_req_valid),

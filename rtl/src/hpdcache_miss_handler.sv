@@ -64,10 +64,10 @@ import hpdcache_pkg::*;
     //      MISS interface
     //      {{{
     //          MISS request interface
-    input  logic                  miss_req_valid_i [HPDcacheCfg.u.nBanks],
-    output logic                  miss_req_ready_o [HPDcacheCfg.u.nBanks],
-    input  hpdcache_nline_t       miss_req_nline_i [HPDcacheCfg.u.nBanks],
-    input  hpdcache_req_tid_t     miss_req_tid_i   [HPDcacheCfg.u.nBanks],
+    input  logic                  miss_req_valid_i   [HPDcacheCfg.u.nBanks],
+    output logic                  miss_req_ready_o   [HPDcacheCfg.u.nBanks],
+    input  hpdcache_nline_t       miss_req_nline_i   [HPDcacheCfg.u.nBanks],
+    input  hpdcache_mshr_id_t     miss_req_mshr_id_i [HPDcacheCfg.u.nBanks],
 
     //          REFILL MISS / Invalidation interface
     input  logic                  refill_req_ready_i,
@@ -136,8 +136,8 @@ import hpdcache_pkg::*;
 
     typedef struct packed {
         hpdcache_nline_t     nline;
-        hpdcache_mem_id_t    tid;
-    } core_miss_req_t;
+        hpdcache_mshr_id_t   mshr_id;
+    } mem_miss_req_t;
     //  }}}
 
     //  Declaration of internal signals and registers
@@ -155,12 +155,12 @@ import hpdcache_pkg::*;
     hpdcache_refill_data_t   refill_fifo_resp_data_rdata;
     logic                    refill_fifo_resp_data_r;
 
-    core_miss_req_t          miss_req_w      [HPDcacheCfg.u.nBanks];
-    core_miss_req_t [HPDcacheCfg.u.nBanks-1:0]         miss_fifo_rdata ;
+    mem_miss_req_t          miss_req_w      [HPDcacheCfg.u.nBanks];
+    mem_miss_req_t [HPDcacheCfg.u.nBanks-1:0]         miss_fifo_rdata ;
     logic [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rok   ;
     logic [HPDcacheCfg.u.nBanks-1:0] miss_fifo_r     ;
     logic                    miss_arb_ready;
-    core_miss_req_t          miss_arb_req;
+    mem_miss_req_t           miss_arb_req;
     hpdcache_nline_t         miss_send_nline_d, miss_send_nline_q;
     hpdcache_mem_id_t        miss_send_id_d, miss_send_id_q;
     logic [$clog2(HPDcacheCfg.u.nBanks)-1:0] miss_bank_id;
@@ -174,13 +174,13 @@ import hpdcache_pkg::*;
         genvar bank_i;
 
         for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin: gen_miss_req_buf
-            assign miss_req_w[bank_i].tid = miss_req_tid_i[bank_i],
+            assign miss_req_w[bank_i].mshr_id = miss_req_mshr_id_i[bank_i],
                    miss_req_w[bank_i].nline = miss_req_nline_i[bank_i];
 
             hpdcache_fifo_reg #(
                 .FIFO_DEPTH  (2),
                 .FEEDTHROUGH (1),
-                .fifo_data_t (core_miss_req_t)
+                .fifo_data_t (mem_miss_req_t)
             ) i_bank_miss_req_buf (
                 .clk_i,
                 .rst_ni,
@@ -207,7 +207,7 @@ import hpdcache_pkg::*;
     //      Request multiplexor
     hpdcache_mux #(
         .NINPUT         (HPDcacheCfg.u.nBanks),
-        .DATA_WIDTH     ($bits(core_miss_req_t)),
+        .DATA_WIDTH     ($bits(mem_miss_req_t)),
         .ONE_HOT_SEL    (1'b1)
     ) core_req_mux_i (
         .data_i         (miss_fifo_rdata),
@@ -238,7 +238,7 @@ import hpdcache_pkg::*;
                 if (|miss_fifo_r) begin
                     miss_req_fsm_d = MISS_REQ_SEND;
                     miss_send_nline_d = miss_arb_req.nline;
-                    miss_send_id_d = hpdcache_mem_id_t'({miss_bank_id, miss_arb_req.tid});
+                    miss_send_id_d = hpdcache_mem_id_t'({miss_bank_id, miss_arb_req.mshr_id});
                 end else begin
                     miss_req_fsm_d = MISS_REQ_IDLE;
                 end
@@ -271,9 +271,13 @@ import hpdcache_pkg::*;
             miss_req_fsm_q <= MISS_REQ_IDLE;
         end else begin
             miss_req_fsm_q <= miss_req_fsm_d;
-            miss_send_nline_q <= miss_send_nline_d;
-            miss_send_id_q <= miss_send_id_d;
         end
+    end
+
+    always_ff @(posedge clk_i)
+    begin
+        miss_send_nline_q <= miss_send_nline_d;
+        miss_send_id_q    <= miss_send_id_d;
     end
     //  }}}
 
@@ -294,21 +298,19 @@ import hpdcache_pkg::*;
         refill_write_dir_o      = 1'b0;
         refill_write_data_o     = 1'b0;
         refill_updt_rtab_o      = 1'b0;
-        refill_cnt_d            = refill_cnt_q;
-
-        inval_check_dir_o       = 1'b0;
-        inval_write_dir_o       = 1'b0;
-
         refill_fifo_resp_meta_r = 1'b0;
         refill_fifo_resp_data_r = 1'b0;
+        refill_cnt_d            = refill_cnt_q;
+        refill_fsm_d            = refill_fsm_q;
+
+        inval_check_dir_o = 1'b0;
+        inval_write_dir_o = 1'b0;
 
         for (int unsigned i = 0; i < HPDcacheCfg.u.nBanks; i++) begin
             mshr_ack_cs_o[i] = 1'b0;
             mshr_ack_o[i]    = 1'b0;
             mshr_ack_id_o[i] = '0;
         end
-
-        refill_fsm_d            = refill_fsm_q;
 
         case (refill_fsm_q)
             //  Wait for refill responses
