@@ -46,6 +46,7 @@ import hpdcache_pkg::*;
 
     parameter type hpdcache_req_t = logic,
     parameter type hpdcache_rsp_t = logic,
+    parameter type hpdcache_mem_addr_t = logic,
     parameter type hpdcache_mem_id_t = logic,
     parameter type hpdcache_mem_req_t = logic,
     parameter type hpdcache_mem_req_w_t = logic,
@@ -686,7 +687,7 @@ import hpdcache_pkg::*;
 //  {{{
     always_comb
     begin : mem_req_read_comb
-        mem_req_read_o.mem_req_addr      = req_addr_q;
+        mem_req_read_o.mem_req_addr      = hpdcache_mem_addr_t'(req_addr_q);
         mem_req_read_o.mem_req_len       = 0;
         mem_req_read_o.mem_req_size      = req_size_q;
         mem_req_read_o.mem_req_id        = mem_read_id_i;
@@ -715,7 +716,7 @@ import hpdcache_pkg::*;
     always_comb
     begin : mem_req_write_comb
         mem_req_write_data                = req_data_q;
-        mem_req_write_o.mem_req_addr      = req_addr_q;
+        mem_req_write_o.mem_req_addr      = hpdcache_mem_addr_t'(req_addr_q);
         mem_req_write_o.mem_req_len       = 0;
         mem_req_write_o.mem_req_size      = req_size_q;
         mem_req_write_o.mem_req_id        = mem_write_id_i;

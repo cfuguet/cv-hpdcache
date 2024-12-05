@@ -778,6 +778,7 @@ import hpdcache_pkg::*;
         .hpdcache_way_vector_t         (hpdcache_way_vector_t),
         .hpdcache_req_t                (hpdcache_req_t),
         .hpdcache_rsp_t                (hpdcache_rsp_t),
+        .hpdcache_mem_addr_t           (hpdcache_mem_addr_t),
         .hpdcache_mem_id_t             (hpdcache_mem_id_t),
         .hpdcache_mem_req_t            (hpdcache_mem_req_t),
         .hpdcache_mem_req_w_t          (hpdcache_mem_req_w_t),
