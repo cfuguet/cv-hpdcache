@@ -155,10 +155,11 @@ import hpdcache_pkg::*;
     hpdcache_refill_data_t   refill_fifo_resp_data_rdata;
     logic                    refill_fifo_resp_data_r;
 
-    mem_miss_req_t          miss_req_w      [HPDcacheCfg.u.nBanks];
-    mem_miss_req_t [HPDcacheCfg.u.nBanks-1:0]         miss_fifo_rdata ;
-    logic [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rok   ;
-    logic [HPDcacheCfg.u.nBanks-1:0] miss_fifo_r     ;
+    mem_miss_req_t [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rdata;
+    logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_rok;
+    logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_r;
+
+    mem_miss_req_t           miss_req_w [HPDcacheCfg.u.nBanks];
     logic                    miss_arb_ready;
     mem_miss_req_t           miss_arb_req;
     hpdcache_nline_t         miss_send_nline_d, miss_send_nline_q;
@@ -230,7 +231,7 @@ import hpdcache_pkg::*;
 
         miss_req_fsm_d     = miss_req_fsm_q;
         miss_send_nline_d  = miss_send_nline_q;
-        miss_send_id_d     = miss_send_nline_q;
+        miss_send_id_d     = miss_send_id_q;
 
         unique case (miss_req_fsm_q)
             MISS_REQ_IDLE: begin
