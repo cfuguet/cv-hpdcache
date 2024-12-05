@@ -57,8 +57,11 @@ import hpdcache_pkg::*;
     parameter type hpdcache_mem_req_t = logic,
     parameter type hpdcache_mem_req_w_t = logic,
     parameter type hpdcache_mem_resp_r_t = logic,
-    parameter type hpdcache_mem_resp_w_t = logic
+    parameter type hpdcache_mem_resp_w_t = logic,
     //  }}}
+
+    localparam int nReqs  = HPDcacheCfg.u.nRequesters,
+    localparam int nBanks = HPDcacheCfg.u.nBanks
 )
     //  }}}
 
@@ -74,17 +77,17 @@ import hpdcache_pkg::*;
 
     //      Core request interface
     //         1st cycle
-    input  logic                          core_req_valid_i [HPDcacheCfg.u.nRequesters],
-    output logic                          core_req_ready_o [HPDcacheCfg.u.nRequesters],
-    input  hpdcache_req_t                 core_req_i       [HPDcacheCfg.u.nRequesters],
+    input  logic                          core_req_valid_i [nReqs],
+    output logic                          core_req_ready_o [nReqs],
+    input  hpdcache_req_t                 core_req_i       [nReqs],
     //         2nd cycle
-    input  logic                          core_req_abort_i [HPDcacheCfg.u.nRequesters],
-    input  hpdcache_tag_t                 core_req_tag_i   [HPDcacheCfg.u.nRequesters],
-    input  hpdcache_pma_t                 core_req_pma_i   [HPDcacheCfg.u.nRequesters],
+    input  logic                          core_req_abort_i [nReqs],
+    input  hpdcache_tag_t                 core_req_tag_i   [nReqs],
+    input  hpdcache_pma_t                 core_req_pma_i   [nReqs],
 
     //      Core response interface
-    output logic                          core_rsp_valid_o [HPDcacheCfg.u.nRequesters],
-    output hpdcache_rsp_t                 core_rsp_o       [HPDcacheCfg.u.nRequesters],
+    output logic                          core_rsp_valid_o [nReqs],
+    output hpdcache_rsp_t                 core_rsp_o       [nReqs],
 
     //      Read / Invalidation memory interface
     input  logic                          mem_req_read_ready_i,
@@ -113,17 +116,17 @@ import hpdcache_pkg::*;
     input  hpdcache_mem_resp_w_t          mem_resp_write_i,
 
     //      Performance events
-    output logic                          evt_cache_write_miss_o,
-    output logic                          evt_cache_read_miss_o,
-    output logic                          evt_uncached_req_o,
-    output logic                          evt_cmo_req_o,
-    output logic                          evt_write_req_o,
-    output logic                          evt_read_req_o,
-    output logic                          evt_prefetch_req_o,
-    output logic                          evt_req_on_hold_o,
-    output logic                          evt_rtab_rollback_o,
-    output logic                          evt_stall_refill_o,
-    output logic                          evt_stall_o,
+    output logic [nBanks-1:0]             evt_cache_write_miss_o,
+    output logic [nBanks-1:0]             evt_cache_read_miss_o,
+    output logic [nBanks-1:0]             evt_uncached_req_o,
+    output logic [nBanks-1:0]             evt_cmo_req_o,
+    output logic [nBanks-1:0]             evt_write_req_o,
+    output logic [nBanks-1:0]             evt_read_req_o,
+    output logic [nBanks-1:0]             evt_prefetch_req_o,
+    output logic [nBanks-1:0]             evt_req_on_hold_o,
+    output logic [nBanks-1:0]             evt_rtab_rollback_o,
+    output logic [nBanks-1:0]             evt_stall_refill_o,
+    output logic [nBanks-1:0]             evt_stall_o,
 
     //      Status interface
     output logic                          wbuf_empty_o,
@@ -187,8 +190,8 @@ import hpdcache_pkg::*;
 
     //  Declaration of internal signals
     //  {{{
-    logic                  core_rsp_valid [HPDcacheCfg.u.nBanks];
-    hpdcache_rsp_t         core_rsp       [HPDcacheCfg.u.nBanks];
+    logic                  core_rsp_valid [nBanks];
+    hpdcache_rsp_t         core_rsp       [nBanks];
 
     logic                  refill_req_valid;
     logic                  refill_req_ready;
@@ -204,8 +207,6 @@ import hpdcache_pkg::*;
     logic                  inval_write_dir;
     hpdcache_nline_t       inval_nline;
     logic                  inval_hit;
-
-    logic                  miss_mshr_empty;
 
     logic                  wbuf_flush_all;
     logic                  wbuf_write;
@@ -299,15 +300,19 @@ import hpdcache_pkg::*;
     hpdcache_nline_t       ctrl_flush_alloc_nline;
     hpdcache_way_vector_t  ctrl_flush_alloc_way;
 
+    logic [nBanks-1:0]     bank_rtab_empty;
+    logic [nBanks-1:0]     bank_ctrl_empty;
+    logic [nBanks-1:0]     bank_mshr_empty;
     logic                  rtab_empty;
     logic                  ctrl_empty;
+    logic                  mshr_empty;
 
-    logic                  bank_req_valid [HPDcacheCfg.u.nBanks];
-    logic                  bank_req_ready [HPDcacheCfg.u.nBanks];
-    hpdcache_req_t         bank_req       [HPDcacheCfg.u.nBanks];
-    logic                  bank_abort     [HPDcacheCfg.u.nBanks];
-    hpdcache_tag_t         bank_tag       [HPDcacheCfg.u.nBanks];
-    hpdcache_pma_t         bank_pma       [HPDcacheCfg.u.nBanks];
+    logic                  bank_req_valid [nBanks];
+    logic                  bank_req_ready [nBanks];
+    hpdcache_req_t         bank_req       [nBanks];
+    logic                  bank_abort     [nBanks];
+    hpdcache_tag_t         bank_tag       [nBanks];
+    hpdcache_pma_t         bank_pma       [nBanks];
 
     logic                  mem_req_read_miss_ready;
     logic                  mem_req_read_miss_valid;
@@ -370,14 +375,14 @@ import hpdcache_pkg::*;
     localparam logic [HPDcacheCfg.u.memIdWidth-1:0] HPDCACHE_UC_WRITE_ID =
         {HPDcacheCfg.u.memIdWidth{1'b1}};
 
-    logic                  miss_req_valid   [HPDcacheCfg.u.nBanks];
-    logic                  miss_req_ready   [HPDcacheCfg.u.nBanks];
-    hpdcache_nline_t       miss_req_nline   [HPDcacheCfg.u.nBanks];
-    hpdcache_mshr_id_t     miss_req_mshr_id [HPDcacheCfg.u.nBanks];
+    logic                  miss_req_valid   [nBanks];
+    logic                  miss_req_ready   [nBanks];
+    hpdcache_nline_t       miss_req_nline   [nBanks];
+    hpdcache_mshr_id_t     miss_req_mshr_id [nBanks];
 
-    logic                  mshr_ack    [HPDcacheCfg.u.nBanks];
-    logic                  mshr_ack_cs [HPDcacheCfg.u.nBanks];
-    hpdcache_mshr_id_t     mshr_ack_id [HPDcacheCfg.u.nBanks];
+    logic                  mshr_ack    [nBanks];
+    logic                  mshr_ack_cs [nBanks];
+    hpdcache_mshr_id_t     mshr_ack_id [nBanks];
     //  }}}
 
     //  HPDcache controller
@@ -392,14 +397,14 @@ import hpdcache_pkg::*;
 
     //  bank crossbar
     //  {{{
-    localparam BankIdWidth = HPDcacheCfg.u.nBanks > 1 ? $clog2(HPDcacheCfg.u.nBanks) : 1;
+    localparam BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1;
     typedef logic [BankIdWidth-1:0] bank_id_t;
     typedef bank_id_t[2**BankIdWidth-1:0] bank_rt_t;
 
     function automatic bank_rt_t buildBankRt();
         bank_rt_t ret;
         for (int unsigned i = 0; i < 2**BankIdWidth; i++) begin
-            ret[i] = bank_id_t'(i % HPDcacheCfg.u.nBanks);
+            ret[i] = bank_id_t'(i % nBanks);
         end
         return ret;
     endfunction
@@ -441,7 +446,7 @@ import hpdcache_pkg::*;
 
     generate
         genvar bankId;
-        for (bankId = 0; bankId < HPDcacheCfg.u.nBanks; bankId++) begin: gen_banks
+        for (bankId = 0; bankId < nBanks; bankId++) begin: gen_banks
             //  bank controller
             //  {{{
             hpdcache_ctrl #(
@@ -499,7 +504,7 @@ import hpdcache_pkg::*;
                 .mshr_ack_id_i                      (mshr_ack_id[bankId]),
 
                 .mshr_full_o                        (/* unused */),
-                .mshr_empty_o                       (miss_mshr_empty),
+                .mshr_empty_o                       (bank_mshr_empty[bankId]),
 
                 .refill_req_valid_i                 (refill_req_valid),
                 .refill_req_ready_o                 (refill_req_ready),
@@ -601,30 +606,33 @@ import hpdcache_pkg::*;
                 .cmo_dir_inval_set_i                (cmo_dir_inval_set),
                 .cmo_dir_inval_way_i                (cmo_dir_inval_way),
 
-                .rtab_empty_o                       (rtab_empty),
-                .ctrl_empty_o                       (ctrl_empty),
+                .rtab_empty_o                       (bank_rtab_empty[bankId]),
+                .ctrl_empty_o                       (bank_ctrl_empty[bankId]),
 
                 .cfg_enable_i,
                 .cfg_prefetch_updt_plru_i,
                 .cfg_rtab_single_entry_i,
                 .cfg_default_wb_i                   (cfg_default_wb),
 
-                .evt_cache_write_miss_o,
-                .evt_cache_read_miss_o,
-                .evt_uncached_req_o,
-                .evt_cmo_req_o,
-                .evt_write_req_o,
-                .evt_read_req_o,
-                .evt_prefetch_req_o,
-                .evt_req_on_hold_o,
-                .evt_rtab_rollback_o,
-                .evt_stall_refill_o,
-                .evt_stall_o
+                .evt_cache_write_miss_o             (evt_cache_write_miss_o[bankId]),
+                .evt_cache_read_miss_o              (evt_cache_read_miss_o[bankId]),
+                .evt_uncached_req_o                 (evt_uncached_req_o[bankId]),
+                .evt_cmo_req_o                      (evt_cmo_req_o[bankId]),
+                .evt_write_req_o                    (evt_write_req_o[bankId]),
+                .evt_read_req_o                     (evt_read_req_o[bankId]),
+                .evt_prefetch_req_o                 (evt_prefetch_req_o[bankId]),
+                .evt_req_on_hold_o                  (evt_req_on_hold_o[bankId]),
+                .evt_rtab_rollback_o                (evt_rtab_rollback_o[bankId]),
+                .evt_stall_refill_o                 (evt_stall_refill_o[bankId]),
+                .evt_stall_o                        (evt_stall_o[bankId])
             );
             //  }}}
         end
     endgenerate
 
+    assign rtab_empty = |bank_rtab_empty;
+    assign ctrl_empty = |bank_ctrl_empty;
+    assign mshr_empty = |bank_mshr_empty;
     //  }}}
 
     //  HPDcache write-buffer
@@ -789,7 +797,7 @@ import hpdcache_pkg::*;
         .rst_ni,
 
         .wbuf_empty_i                  (wbuf_empty_o),
-        .mshr_empty_i                  (miss_mshr_empty),
+        .mshr_empty_i                  (mshr_empty),
         .refill_busy_i                 (refill_busy),
         .rtab_empty_i                  (rtab_empty),
         .ctrl_empty_i                  (ctrl_empty),
@@ -876,7 +884,7 @@ import hpdcache_pkg::*;
         .rst_ni,
 
         .wbuf_empty_i                  (wbuf_empty_o),
-        .mshr_empty_i                  (miss_mshr_empty),
+        .mshr_empty_i                  (mshr_empty),
         .refill_busy_i                 (refill_busy),
         .rtab_empty_i                  (rtab_empty),
         .ctrl_empty_i                  (ctrl_empty),

@@ -31,7 +31,7 @@ import hpdcache_pkg::*;
 #(
     localparam hpdcache_user_cfg_t UserCfg = '{
         nRequesters: (4'b1 << `CONF_HPDCACHE_REQ_SRC_ID_WIDTH),
-        nBanks: 1,
+        nBanks: 2,
         paWidth: `CONF_HPDCACHE_PA_WIDTH,
         wordWidth: `CONF_HPDCACHE_WORD_WIDTH,
         sets: `CONF_HPDCACHE_SETS,
@@ -98,7 +98,9 @@ import hpdcache_pkg::*;
     localparam type hpdcache_mem_addr_t = logic [Cfg.u.memAddrWidth-1:0],
     localparam type hpdcache_mem_id_t   = logic [Cfg.u.memIdWidth-1:0],
     localparam type hpdcache_mem_data_t = logic [Cfg.u.memDataWidth-1:0],
-    localparam type hpdcache_mem_be_t   = logic [Cfg.u.memDataWidth/8-1:0]
+    localparam type hpdcache_mem_be_t   = logic [Cfg.u.memDataWidth/8-1:0],
+
+    localparam int  nBanks              = Cfg.u.nBanks
 )
     //  }}}
 
@@ -168,17 +170,17 @@ import hpdcache_pkg::*;
     input  wire hpdcache_mem_id_t              mem_resp_write_id_i,
 
     //      Performance events
-    output wire  logic                         evt_cache_write_miss_o,
-    output wire  logic                         evt_cache_read_miss_o,
-    output wire  logic                         evt_uncached_req_o,
-    output wire  logic                         evt_cmo_req_o,
-    output wire  logic                         evt_write_req_o,
-    output wire  logic                         evt_read_req_o,
-    output wire  logic                         evt_prefetch_req_o,
-    output wire  logic                         evt_req_on_hold_o,
-    output wire  logic                         evt_rtab_rollback_o,
-    output wire  logic                         evt_stall_refill_o,
-    output wire  logic                         evt_stall_o,
+    output wire logic [nBanks-1:0]             evt_cache_write_miss_o,
+    output wire logic [nBanks-1:0]             evt_cache_read_miss_o,
+    output wire logic [nBanks-1:0]             evt_uncached_req_o,
+    output wire logic [nBanks-1:0]             evt_cmo_req_o,
+    output wire logic [nBanks-1:0]             evt_write_req_o,
+    output wire logic [nBanks-1:0]             evt_read_req_o,
+    output wire logic [nBanks-1:0]             evt_prefetch_req_o,
+    output wire logic [nBanks-1:0]             evt_req_on_hold_o,
+    output wire logic [nBanks-1:0]             evt_rtab_rollback_o,
+    output wire logic [nBanks-1:0]             evt_stall_refill_o,
+    output wire logic [nBanks-1:0]             evt_stall_o,
 
     //      Status interface
     output wire  logic                         wbuf_empty_o,
