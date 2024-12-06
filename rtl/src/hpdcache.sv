@@ -193,15 +193,15 @@ import hpdcache_pkg::*;
     logic                  core_rsp_valid [nBanks];
     hpdcache_rsp_t         core_rsp       [nBanks];
 
-    logic                  refill_req_valid;
-    logic                  refill_req_ready;
+    logic                  refill_req_valid  [nBanks];
+    logic                  refill_req_ready  [nBanks];
     logic                  refill_is_error;
     logic                  refill_busy;
-    logic                  refill_write_dir;
-    logic                  refill_write_data;
+    logic                  refill_write_dir  [nBanks];
+    logic                  refill_write_data [nBanks];
     hpdcache_word_t        refill_word;
     hpdcache_access_data_t refill_data;
-    logic                  refill_updt_rtab;
+    logic                  refill_updt_rtab  [nBanks];
 
     logic                  inval_check_dir;
     logic                  inval_write_dir;
@@ -506,15 +506,15 @@ import hpdcache_pkg::*;
                 .mshr_full_o                        (/* unused */),
                 .mshr_empty_o                       (bank_mshr_empty[bankId]),
 
-                .refill_req_valid_i                 (refill_req_valid),
-                .refill_req_ready_o                 (refill_req_ready),
+                .refill_req_valid_i                 (refill_req_valid[bankId]),
+                .refill_req_ready_o                 (refill_req_ready[bankId]),
                 .refill_is_error_i                  (refill_is_error),
                 .refill_busy_i                      (refill_busy),
-                .refill_write_dir_i                 (refill_write_dir),
-                .refill_write_data_i                (refill_write_data),
+                .refill_write_dir_i                 (refill_write_dir[bankId]),
+                .refill_write_data_i                (refill_write_data[bankId]),
                 .refill_word_i                      (refill_word),
                 .refill_data_i                      (refill_data),
-                .refill_updt_rtab_i                 (refill_updt_rtab),
+                .refill_updt_rtab_i                 (refill_updt_rtab[bankId]),
 
                 .flush_busy_i                       (flush_busy),
                 .flush_check_nline_o                (flush_check_nline),

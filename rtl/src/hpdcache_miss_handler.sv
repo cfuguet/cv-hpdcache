@@ -64,21 +64,21 @@ import hpdcache_pkg::*;
     //      MISS interface
     //      {{{
     //          MISS request interface
-    input  logic                  miss_req_valid_i   [HPDcacheCfg.u.nBanks],
-    output logic                  miss_req_ready_o   [HPDcacheCfg.u.nBanks],
-    input  hpdcache_nline_t       miss_req_nline_i   [HPDcacheCfg.u.nBanks],
-    input  hpdcache_mshr_id_t     miss_req_mshr_id_i [HPDcacheCfg.u.nBanks],
+    input  logic                  miss_req_valid_i    [HPDcacheCfg.u.nBanks],
+    output logic                  miss_req_ready_o    [HPDcacheCfg.u.nBanks],
+    input  hpdcache_nline_t       miss_req_nline_i    [HPDcacheCfg.u.nBanks],
+    input  hpdcache_mshr_id_t     miss_req_mshr_id_i  [HPDcacheCfg.u.nBanks],
 
     //          REFILL MISS / Invalidation interface
-    input  logic                  refill_req_ready_i,
-    output logic                  refill_req_valid_o,
+    input  logic                  refill_req_ready_i  [HPDcacheCfg.u.nBanks],
+    output logic                  refill_req_valid_o  [HPDcacheCfg.u.nBanks],
     output logic                  refill_is_error_o,
     output logic                  refill_busy_o,
-    output logic                  refill_write_dir_o,
-    output logic                  refill_write_data_o,
+    output logic                  refill_write_dir_o  [HPDcacheCfg.u.nBanks],
+    output logic                  refill_write_data_o [HPDcacheCfg.u.nBanks],
     output hpdcache_refill_data_t refill_data_o,
     output hpdcache_word_t        refill_word_o,
-    output logic                  refill_updt_rtab_o,
+    output logic                  refill_updt_rtab_o  [HPDcacheCfg.u.nBanks],
 
     output logic                  inval_check_dir_o,
     output logic                  inval_write_dir_o,
@@ -148,13 +148,13 @@ import hpdcache_pkg::*;
     refill_fsm_e             refill_fsm_q, refill_fsm_d;
     hpdcache_word_t          refill_cnt_q, refill_cnt_d;
 
-    mem_resp_metadata_t      refill_fifo_resp_meta_wdata, refill_fifo_resp_meta_rdata;
-    logic                    refill_fifo_resp_meta_w, refill_fifo_resp_meta_wok;
-    logic                    refill_fifo_resp_meta_r, refill_fifo_resp_meta_rok;
+    mem_resp_metadata_t      resp_meta_wdata, resp_meta_rdata;
+    logic                    resp_meta_w, resp_meta_wok;
+    logic                    resp_meta_r, resp_meta_rok;
 
-    logic                    refill_fifo_resp_data_w, refill_fifo_resp_data_wok;
-    hpdcache_refill_data_t   refill_fifo_resp_data_rdata;
-    logic                    refill_fifo_resp_data_r;
+    logic                    resp_data_w, resp_data_wok;
+    hpdcache_refill_data_t   resp_data_rdata;
+    logic                    resp_data_r;
 
     mem_miss_req_t [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rdata;
     logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_rok;
@@ -287,56 +287,57 @@ import hpdcache_pkg::*;
     //  {{{
 
     //      ask permission to the refill arbiter if there is a pending refill
-    assign refill_req_valid_o  = refill_fsm_q == REFILL_IDLE ? refill_fifo_resp_meta_rok : 1'b0;
-
     if (HPDcacheCfg.u.nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
-        assign refill_bank_id =
-            refill_fifo_resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
+        assign refill_bank_id = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
     end else begin : gen_refill_bank_id_nbanks_not_gt_1
         assign refill_bank_id = 0;
     end
 
     always_comb
     begin : miss_resp_fsm_comb
-        refill_write_dir_o      = 1'b0;
-        refill_write_data_o     = 1'b0;
-        refill_updt_rtab_o      = 1'b0;
-        refill_fifo_resp_meta_r = 1'b0;
-        refill_fifo_resp_data_r = 1'b0;
-        refill_cnt_d            = refill_cnt_q;
-        refill_fsm_d            = refill_fsm_q;
+        refill_req_valid_o  = '{default:1'b0};
+        refill_write_dir_o  = '{default:1'b0};
+        refill_write_data_o = '{default:1'b0};
+        refill_updt_rtab_o  = '{default:1'b0};
+        refill_cnt_d        = refill_cnt_q;
+        refill_fsm_d        = refill_fsm_q;
+
+        resp_meta_r = 1'b0;
+        resp_data_r = 1'b0;
 
         inval_check_dir_o = 1'b0;
         inval_write_dir_o = 1'b0;
 
-        for (int unsigned i = 0; i < HPDcacheCfg.u.nBanks; i++) begin
-            mshr_ack_cs_o[i] = 1'b0;
-            mshr_ack_o[i]    = 1'b0;
-            mshr_ack_id_o[i] = '0;
-        end
+        mshr_ack_cs_o = '{default:1'b0};
+        mshr_ack_o    = '{default:1'b0};
+        mshr_ack_id_o = '{default:'0};
 
         case (refill_fsm_q)
             //  Wait for refill responses
             //  {{{
             REFILL_IDLE: begin
-                if (refill_fifo_resp_meta_rok) begin
+                if (resp_meta_rok) begin
+                    //  FIXME in case of invalidation, the bank ID shall be
+                    //  decoded from the invalidation nline (applying the same
+                    //  mapping as for the requests)
+                    refill_req_valid_o[refill_bank_id] = 1'b1;
+
                     //  anticipate the activation of the MSHR independently of the grant signal from
                     //  the refill arbiter. This is to avoid the introduction of unnecessary timing
                     //  paths (however there could be a minor augmentation of the power consumption)
-                    mshr_ack_cs_o[refill_bank_id] = ~refill_fifo_resp_meta_rdata.is_inval;
+                    mshr_ack_cs_o[refill_bank_id] = ~resp_meta_rdata.is_inval;
 
                     //  if the permission is granted, start refilling
-                    if (refill_req_ready_i) begin
-
-                        if (refill_fifo_resp_meta_rdata.is_inval) begin
+                    if (refill_req_ready_i[refill_bank_id]) begin
+                        if (resp_meta_rdata.is_inval) begin
                             //  check for a match with the line being invalidated in the cache dir
                             inval_check_dir_o = 1'b1;
 
                             refill_fsm_d = REFILL_INVAL;
                         end else begin
                             //  read the MSHR and reset the valid bit for the corresponding entry
-                            mshr_ack_o[refill_bank_id] = ~refill_fifo_resp_meta_rdata.is_inval;
-                            mshr_ack_id_o[refill_bank_id] = refill_fifo_resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth-1:0];
+                            mshr_ack_o[refill_bank_id] = ~resp_meta_rdata.is_inval;
+                            mshr_ack_id_o[refill_bank_id] = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth-1:0];
 
                             //  initialize the counter for refill words
                             refill_cnt_d = 0;
@@ -350,12 +351,11 @@ import hpdcache_pkg::*;
             //  Write refill data into the cache
             //  {{{
             REFILL_WRITE: begin
-
                 //  Write the the data in the cache data array
-                refill_write_data_o = ~refill_is_error_o;
+                refill_write_data_o[refill_bank_id] = ~refill_is_error_o;
 
                 //  Consume chunk of data from the FIFO buffer in the memory interface
-                refill_fifo_resp_data_r = 1'b1;
+                resp_data_r = 1'b1;
 
                 //  Update directory on the last chunk of data
                 refill_cnt_d = refill_cnt_q + hpdcache_word_t'(HPDcacheCfg.u.accessWords);
@@ -368,13 +368,13 @@ import hpdcache_pkg::*;
                         refill_fsm_d = REFILL_WRITE_DIR;
                     end else begin
                         //  Write the new entry in the cache directory
-                        refill_write_dir_o = 1'b1;
+                        refill_write_dir_o[refill_bank_id] = 1'b1;
 
                         //  Update dependency flags in the retry table
-                        refill_updt_rtab_o  = 1'b1;
+                        refill_updt_rtab_o[refill_bank_id] = 1'b1;
 
                         //  consume the response from the network
-                        refill_fifo_resp_meta_r = 1'b1;
+                        resp_meta_r = 1'b1;
 
                         refill_fsm_d = REFILL_IDLE;
                     end
@@ -387,13 +387,13 @@ import hpdcache_pkg::*;
             //  {{{
             REFILL_WRITE_DIR: begin
                 //  Write the new entry in the cache directory
-                refill_write_dir_o  = 1'b1;
+                refill_write_dir_o[refill_bank_id] = 1'b1;
 
                 //  Update dependency flags in the retry table
-                refill_updt_rtab_o = 1'b1;
+                refill_updt_rtab_o[refill_bank_id] = 1'b1;
 
                 //  consume the response from the network
-                refill_fifo_resp_meta_r = 1'b1;
+                resp_meta_r = 1'b1;
 
                 refill_fsm_d = REFILL_IDLE;
             end
@@ -406,7 +406,7 @@ import hpdcache_pkg::*;
                 inval_write_dir_o = inval_hit_i;
 
                 //  consume the invalidation from the network
-                refill_fifo_resp_meta_r = 1'b1;
+                resp_meta_r = 1'b1;
 
                 refill_fsm_d = REFILL_IDLE;
             end
@@ -419,16 +419,16 @@ import hpdcache_pkg::*;
         endcase
     end
 
-    assign refill_is_error_o = (refill_fifo_resp_meta_rdata.r_error == HPDCACHE_MEM_RESP_NOK);
+    assign refill_is_error_o = (resp_meta_rdata.r_error == HPDCACHE_MEM_RESP_NOK);
 
     assign refill_busy_o  = (refill_fsm_q != REFILL_IDLE);
     assign refill_word_o  = refill_cnt_q;
 
-    assign inval_nline_o = refill_fifo_resp_meta_rdata.inval_nline;
+    assign inval_nline_o = resp_meta_rdata.inval_nline;
 
     /* FIXME: when multiple chunks, in case of error, the error bit is not
      *        necessarily set on all chunks */
-    assign refill_fifo_resp_meta_wdata = '{
+    assign resp_meta_wdata = '{
         r_error    : mem_resp_i.mem_resp_r_error,
         r_id       : mem_resp_i.mem_resp_r_id,
         is_inval   : mem_resp_inval_i,
@@ -442,13 +442,13 @@ import hpdcache_pkg::*;
         .clk_i,
         .rst_ni,
 
-        .w_i    (refill_fifo_resp_meta_w),
-        .wok_o  (refill_fifo_resp_meta_wok),
-        .wdata_i(refill_fifo_resp_meta_wdata),
+        .w_i    (resp_meta_w),
+        .wok_o  (resp_meta_wok),
+        .wdata_i(resp_meta_wdata),
 
-        .r_i    (refill_fifo_resp_meta_r),
-        .rok_o  (refill_fifo_resp_meta_rok),
-        .rdata_o(refill_fifo_resp_meta_rdata)
+        .r_i    (resp_meta_r),
+        .rok_o  (resp_meta_rok),
+        .rdata_o(resp_meta_rdata)
     );
 
     hpdcache_data_resize #(
@@ -459,27 +459,27 @@ import hpdcache_pkg::*;
         .clk_i,
         .rst_ni,
 
-        .w_i    (refill_fifo_resp_data_w),
-        .wok_o  (refill_fifo_resp_data_wok),
+        .w_i    (resp_data_w),
+        .wok_o  (resp_data_wok),
         .wdata_i(mem_resp_i.mem_resp_r_data),
         .wlast_i(mem_resp_i.mem_resp_r_last),
 
-        .r_i    (refill_fifo_resp_data_r),
+        .r_i    (resp_data_r),
         .rok_o  (/* unused */),
-        .rdata_o(refill_fifo_resp_data_rdata),
+        .rdata_o(resp_data_rdata),
         .rlast_o(/* unused */)
     );
 
-    assign refill_data_o = refill_fifo_resp_data_rdata;
+    assign refill_data_o = resp_data_rdata;
 
     //      The DATA fifo is only used for refill responses
-    assign refill_fifo_resp_data_w = mem_resp_valid_i &
-            ((refill_fifo_resp_meta_wok | ~mem_resp_i.mem_resp_r_last) &
+    assign resp_data_w = mem_resp_valid_i &
+            ((resp_meta_wok | ~mem_resp_i.mem_resp_r_last) &
             ~mem_resp_inval_i);
 
     //      The METADATA fifo is used for both refill responses and invalidations
-    assign refill_fifo_resp_meta_w = mem_resp_valid_i &
-            ((refill_fifo_resp_data_wok & mem_resp_i.mem_resp_r_last) |
+    assign resp_meta_w = mem_resp_valid_i &
+            ((resp_data_wok & mem_resp_i.mem_resp_r_last) |
             mem_resp_inval_i);
 
     always_comb
@@ -487,10 +487,9 @@ import hpdcache_pkg::*;
         mem_resp_ready_o = 1'b0;
         if (mem_resp_valid_i) begin
             if (mem_resp_inval_i) begin
-                mem_resp_ready_o = refill_fifo_resp_meta_wok;
+                mem_resp_ready_o = resp_meta_wok;
             end else begin
-                mem_resp_ready_o = (refill_fifo_resp_meta_wok | ~mem_resp_i.mem_resp_r_last) &
-                                    refill_fifo_resp_data_wok;
+                mem_resp_ready_o = (resp_meta_wok | ~mem_resp_i.mem_resp_r_last) & resp_data_wok;
             end
         end
     end
