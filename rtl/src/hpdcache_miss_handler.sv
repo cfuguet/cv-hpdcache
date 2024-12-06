@@ -80,10 +80,10 @@ import hpdcache_pkg::*;
     output hpdcache_word_t        refill_word_o,
     output logic                  refill_updt_rtab_o  [HPDcacheCfg.u.nBanks],
 
-    output logic                  inval_check_dir_o,
-    output logic                  inval_write_dir_o,
+    output logic                  inval_check_dir_o   [HPDcacheCfg.u.nBanks],
+    output logic                  inval_write_dir_o   [HPDcacheCfg.u.nBanks],
     output hpdcache_nline_t       inval_nline_o,
-    input  logic                  inval_hit_i,
+    input  logic                  inval_hit_i         [HPDcacheCfg.u.nBanks],
     //      }}}
 
     //      MSHR ACK interface
@@ -306,8 +306,8 @@ import hpdcache_pkg::*;
         resp_meta_r = 1'b0;
         resp_data_r = 1'b0;
 
-        inval_check_dir_o = 1'b0;
-        inval_write_dir_o = 1'b0;
+        inval_check_dir_o   = '{default:1'b0};
+        inval_write_dir_o   = '{default:1'b0};
 
         mshr_ack_cs_o = '{default:1'b0};
         mshr_ack_o    = '{default:1'b0};
@@ -332,7 +332,7 @@ import hpdcache_pkg::*;
                     if (refill_req_ready_i[refill_bank_id]) begin
                         if (resp_meta_rdata.is_inval) begin
                             //  check for a match with the line being invalidated in the cache dir
-                            inval_check_dir_o = 1'b1;
+                            // inval_check_dir_o = 1'b1; //FIXME
 
                             refill_fsm_d = REFILL_INVAL;
                         end else begin
@@ -404,7 +404,7 @@ import hpdcache_pkg::*;
             //  {{{
             REFILL_INVAL: begin
                 //  Invalidate if there is a match
-                inval_write_dir_o = inval_hit_i;
+                // inval_write_dir_o = inval_hit_i;//FIXME
 
                 //  consume the invalidation from the network
                 resp_meta_r = 1'b1;
