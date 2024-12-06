@@ -114,7 +114,7 @@ import hpdcache_pkg::*;
                                                 HPDcacheCfg.u.reqWords;
     localparam hpdcache_uint REFILL_LAST_CHUNK_WORD = HPDcacheCfg.u.clWords -
                                                       HPDcacheCfg.u.accessWords;
-    localparam hpdcache_uint BANK_ID_WIDTH = $clog2(HPDcacheCfg.u.nBanks);
+    localparam hpdcache_uint BANK_ID_WIDTH = HPDcacheCfg.u.nBanks > 1 ? $clog2(HPDcacheCfg.u.nBanks) : 1;
 
     typedef enum logic {
         MISS_REQ_IDLE = 1'b0,
