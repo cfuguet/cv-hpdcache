@@ -65,17 +65,17 @@ public:
     sc_fifo_in<hpdcache_test_transaction_mem_write_req>  mem_write_req_i;
     sc_fifo_in<hpdcache_test_transaction_mem_write_resp> mem_write_resp_i;
 
-    sc_in<uint32_t>                                      evt_cache_write_miss_i;
-    sc_in<uint32_t>                                      evt_cache_read_miss_i;
-    sc_in<uint32_t>                                      evt_uncached_req_i;
-    sc_in<uint32_t>                                      evt_cmo_req_i;
-    sc_in<uint32_t>                                      evt_write_req_i;
-    sc_in<uint32_t>                                      evt_read_req_i;
-    sc_in<uint32_t>                                      evt_prefetch_req_i;
-    sc_in<uint32_t>                                      evt_req_on_hold_i;
-    sc_in<uint32_t>                                      evt_rtab_rollback_i;
-    sc_in<uint32_t>                                      evt_stall_refill_i;
-    sc_in<uint32_t>                                      evt_stall_i;
+    sc_in<evt_t>                                         evt_cache_write_miss_i;
+    sc_in<evt_t>                                         evt_cache_read_miss_i;
+    sc_in<evt_t>                                         evt_uncached_req_i;
+    sc_in<evt_t>                                         evt_cmo_req_i;
+    sc_in<evt_t>                                         evt_write_req_i;
+    sc_in<evt_t>                                         evt_read_req_i;
+    sc_in<evt_t>                                         evt_prefetch_req_i;
+    sc_in<evt_t>                                         evt_req_on_hold_i;
+    sc_in<evt_t>                                         evt_rtab_rollback_i;
+    sc_in<evt_t>                                         evt_stall_refill_i;
+    sc_in<evt_t>                                         evt_stall_i;
 
     hpdcache_test_scoreboard(sc_core::sc_module_name nm) :
             sc_module(nm),
@@ -337,37 +337,81 @@ private:
     {
         nb_cycles++;
         if (evt_cache_write_miss_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_cache_write_miss += __builtin_popcount(evt_cache_write_miss_i.read());
+#else
+            evt_cache_write_miss++;
+#endif
         }
         if (evt_cache_read_miss_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_cache_read_miss += __builtin_popcount(evt_cache_read_miss_i.read());
+#else
+            evt_cache_read_miss++;
+#endif
         }
         if (evt_uncached_req_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_uncached_req += __builtin_popcount(evt_uncached_req_i.read());
+#else
+            evt_uncached_req++;
+#endif
         }
         if (evt_cmo_req_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_cmo_req += __builtin_popcount(evt_cmo_req_i.read());
+#else
+            evt_cmo_req++;
+#endif
         }
         if (evt_write_req_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_write_req += __builtin_popcount(evt_write_req_i.read());
+#else
+            evt_write_req++;
+#endif
         }
         if (evt_read_req_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_read_req += __builtin_popcount(evt_read_req_i.read());
+#else
+            evt_read_req++;
+#endif
         }
         if (evt_prefetch_req_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_prefetch_req += __builtin_popcount(evt_prefetch_req_i.read());
+#else
+            evt_prefetch_req++;
+#endif
         }
         if (evt_req_on_hold_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_req_on_hold += __builtin_popcount(evt_req_on_hold_i.read());
+#else
+            evt_req_on_hold++;
+#endif
         }
         if (evt_rtab_rollback_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_rtab_rollback += __builtin_popcount(evt_rtab_rollback_i.read());
+#else
+            evt_rtab_rollback++;
+#endif
         }
         if (evt_stall_refill_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_stall_refill += __builtin_popcount(evt_stall_refill_i.read());
+#else
+            evt_stall_refill++;
+#endif
         }
         if (evt_stall_i.read()) {
+#if HPDCACHE_NBANKS > 2
             evt_stall += __builtin_popcount(evt_stall_i.read());
+#else
+            evt_stall++;
+#endif
         }
     }
 

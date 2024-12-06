@@ -401,17 +401,17 @@ private:
     sc_core::sc_fifo<hpdcache_test_transaction_mem_write_req> sb_mem_write_req;
     sc_core::sc_fifo<hpdcache_test_transaction_mem_write_resp> sb_mem_write_resp;
 
-    sc_core::sc_signal <uint32_t> evt_cache_write_miss;
-    sc_core::sc_signal <uint32_t> evt_cache_read_miss;
-    sc_core::sc_signal <uint32_t> evt_uncached_req;
-    sc_core::sc_signal <uint32_t> evt_cmo_req;
-    sc_core::sc_signal <uint32_t> evt_write_req;
-    sc_core::sc_signal <uint32_t> evt_read_req;
-    sc_core::sc_signal <uint32_t> evt_prefetch_req;
-    sc_core::sc_signal <uint32_t> evt_req_on_hold;
-    sc_core::sc_signal <uint32_t> evt_rtab_rollback;
-    sc_core::sc_signal <uint32_t> evt_stall_refill;
-    sc_core::sc_signal <uint32_t> evt_stall;
+    sc_core::sc_signal <evt_t> evt_cache_write_miss;
+    sc_core::sc_signal <evt_t> evt_cache_read_miss;
+    sc_core::sc_signal <evt_t> evt_uncached_req;
+    sc_core::sc_signal <evt_t> evt_cmo_req;
+    sc_core::sc_signal <evt_t> evt_write_req;
+    sc_core::sc_signal <evt_t> evt_read_req;
+    sc_core::sc_signal <evt_t> evt_prefetch_req;
+    sc_core::sc_signal <evt_t> evt_req_on_hold;
+    sc_core::sc_signal <evt_t> evt_rtab_rollback;
+    sc_core::sc_signal <evt_t> evt_stall_refill;
+    sc_core::sc_signal <evt_t> evt_stall;
 
     sc_core::sc_signal <bool> wbuf_empty;
 

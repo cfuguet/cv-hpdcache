@@ -102,6 +102,12 @@
 
 #define HPDCACHE_REQ_DATA_WIDTH          ((HPDCACHE_REQ_WORDS)*(HPDCACHE_WORD_WIDTH))
 
+#ifndef CONF_HPDCACHE_MEM_ADDR_WIDTH
+#define HPDCACHE_MEM_ADDR_WIDTH          64
+#else
+#define HPDCACHE_MEM_ADDR_WIDTH          (CONF_HPDCACHE_MEM_ADDR_WIDTH)
+#endif
+
 #ifndef CONF_HPDCACHE_MEM_DATA_WIDTH
 #define HPDCACHE_MEM_DATA_WIDTH          512
 #else
@@ -130,6 +136,12 @@
 #define HPDCACHE_WBUF_DATA_ENTRIES       4
 #else
 #define HPDCACHE_WBUF_DATA_ENTRIES       (CONF_HPDCACHE_WBUF_DATA_ENTRIES)
+#endif
+
+#ifndef CONF_HPDCACHE_WBUF_TIMECNT_WIDTH
+#define HPDCACHE_WBUF_TIMECNT_WIDTH      3
+#else
+#define HPDCACHE_WBUF_TIMECNT_WIDTH      (CONF_HPDCACHE_WBUF_TIMECNT_WIDTH)
 #endif
 
 #ifndef CONF_HPDCACHE_REQ_SRC_ID_WIDTH
@@ -177,5 +189,11 @@
                                           (HPDCACHE_REQ_TRANS_ID_WIDTH) + \
                                           (HPDCACHE_RSP_ERROR_WIDTH) + \
                                           (HPDCACHE_RSP_ABORTED_WIDTH))
+
+#if HPDCACHE_NBANKS > 1
+typedef uint32_t evt_t;
+#else
+typedef bool evt_t;
+#endif
 
 #endif // __HPDCACHE_TEST_DEFS_H__
