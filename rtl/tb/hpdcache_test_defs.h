@@ -46,6 +46,12 @@
 
 #define SCOREBOARD_RAM_SIZE              (16 << 20) // Bytes
 
+#ifndef CONF_HPDCACHE_NBANKS
+#define HPDCACHE_NBANKS                  1
+#else
+#define HPDCACHE_NBANKS                  (CONF_HPDCACHE_NBANKS)
+#endif
+
 #ifndef CONF_HPDCACHE_WAYS
 #define HPDCACHE_WAYS                    8
 #else

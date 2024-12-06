@@ -279,6 +279,7 @@ clean_all: clean clean_log clean_cover
 distclean: clean_all
 
 print_config:
+	@printf "CONF_HPDCACHE_NBANKS=$(CONF_HPDCACHE_NBANKS)\n"
 	@printf "CONF_HPDCACHE_PA_WIDTH=$(CONF_HPDCACHE_PA_WIDTH)\n"
 	@printf "CONF_HPDCACHE_SETS=$(CONF_HPDCACHE_SETS)\n"
 	@printf "CONF_HPDCACHE_WAYS=$(CONF_HPDCACHE_WAYS)\n"
