@@ -110,8 +110,6 @@ import hpdcache_pkg::*;
 
     //  Declaration of constants and types
     //  {{{
-    localparam hpdcache_uint REFILL_REQ_RATIO = HPDcacheCfg.u.accessWords /
-                                                HPDcacheCfg.u.reqWords;
     localparam hpdcache_uint REFILL_LAST_CHUNK_WORD = HPDcacheCfg.u.clWords -
                                                       HPDcacheCfg.u.accessWords;
     localparam hpdcache_uint BANK_ID_WIDTH = HPDcacheCfg.u.nBanks > 1 ? $clog2(HPDcacheCfg.u.nBanks) : 1;
@@ -167,34 +165,34 @@ import hpdcache_pkg::*;
     hpdcache_mem_id_t         miss_send_id_d, miss_send_id_q;
     logic [BANK_ID_WIDTH-1:0] miss_bank_id;
 
-    logic [BANK_ID_WIDTH-1:0] refill_bank_id;
+    logic [BANK_ID_WIDTH-1:0]        refill_bank_id;
+    logic [HPDcacheCfg.u.nBanks-1:0] refill_req_valid /*verilator isolate_assignments*/;
+
+    genvar bank_i;
     //  }}}
 
     //  Miss Request FIFOs & MUX
     //  {{{
-    generate
-        genvar bank_i;
 
-        for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin: gen_miss_req_buf
-            assign miss_req_w[bank_i].mshr_id = miss_req_mshr_id_i[bank_i],
-                   miss_req_w[bank_i].nline = miss_req_nline_i[bank_i];
+    for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin: gen_miss_req_buf
+        assign miss_req_w[bank_i].mshr_id = miss_req_mshr_id_i[bank_i];
+        assign miss_req_w[bank_i].nline = miss_req_nline_i[bank_i];
 
-            hpdcache_fifo_reg #(
-                .FIFO_DEPTH  (2),
-                .FEEDTHROUGH (1),
-                .fifo_data_t (mem_miss_req_t)
-            ) i_bank_miss_req_buf (
-                .clk_i,
-                .rst_ni,
-                .w_i         (miss_req_valid_i[bank_i]),
-                .wok_o       (miss_req_ready_o[bank_i]),
-                .wdata_i     (miss_req_w[bank_i]),
-                .r_i         (miss_fifo_r[bank_i] & miss_arb_ready),
-                .rok_o       (miss_fifo_rok[bank_i]),
-                .rdata_o     (miss_fifo_rdata[bank_i])
-            );
-        end
-    endgenerate
+        hpdcache_fifo_reg #(
+            .FIFO_DEPTH  (2),
+            .FEEDTHROUGH (1),
+            .fifo_data_t (mem_miss_req_t)
+        ) i_bank_miss_req_buf (
+            .clk_i,
+            .rst_ni,
+            .w_i         (miss_req_valid_i[bank_i]),
+            .wok_o       (miss_req_ready_o[bank_i]),
+            .wdata_i     (miss_req_w[bank_i]),
+            .r_i         (miss_fifo_r[bank_i] & miss_arb_ready),
+            .rok_o       (miss_fifo_rok[bank_i]),
+            .rdata_o     (miss_fifo_rdata[bank_i])
+        );
+    end
 
     //      Arbiter
     hpdcache_fxarb #(.N(HPDcacheCfg.u.nBanks)) req_arbiter_i
@@ -285,7 +283,6 @@ import hpdcache_pkg::*;
 
     //  Refill FSM
     //  {{{
-
     //      ask permission to the refill arbiter if there is a pending refill
     if (HPDcacheCfg.u.nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
         assign refill_bank_id = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
@@ -293,9 +290,13 @@ import hpdcache_pkg::*;
         assign refill_bank_id = 0;
     end
 
+    for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin : gen_refill_valid
+        assign refill_req_valid_o[bank_i] = refill_req_valid[bank_i];
+    end
+
     always_comb
     begin : miss_resp_fsm_comb
-        refill_req_valid_o  = '{default:1'b0};
+        refill_req_valid    = '{default:1'b0};
         refill_write_dir_o  = '{default:1'b0};
         refill_write_data_o = '{default:1'b0};
         refill_updt_rtab_o  = '{default:1'b0};
@@ -320,7 +321,7 @@ import hpdcache_pkg::*;
                     //  FIXME in case of invalidation, the bank ID shall be
                     //  decoded from the invalidation nline (applying the same
                     //  mapping as for the requests)
-                    refill_req_valid_o[refill_bank_id] = 1'b1;
+                    refill_req_valid[refill_bank_id] = 1'b1;
 
                     //  anticipate the activation of the MSHR independently of the grant signal from
                     //  the refill arbiter. This is to avoid the introduction of unnecessary timing
