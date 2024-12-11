@@ -200,7 +200,7 @@ import hpdcache_pkg::*;
     logic                  refill_req_valid  [nBanks];
     logic                  refill_req_ready  [nBanks];
     logic                  refill_is_error;
-    logic                  refill_busy;
+    logic [nBanks-1:0]     refill_busy;
     logic                  refill_write_dir  [nBanks];
     logic                  refill_write_data [nBanks];
     hpdcache_word_t        refill_word;
@@ -502,7 +502,7 @@ import hpdcache_pkg::*;
                 .refill_req_valid_i                 (refill_req_valid[bankId]),
                 .refill_req_ready_o                 (refill_req_ready[bankId]),
                 .refill_is_error_i                  (refill_is_error),
-                .refill_busy_i                      (refill_busy),
+                .refill_busy_i                      (refill_busy[bankId]),
                 .refill_write_dir_i                 (refill_write_dir[bankId]),
                 .refill_write_data_i                (refill_write_data[bankId]),
                 .refill_word_i                      (refill_word),
@@ -719,7 +719,7 @@ import hpdcache_pkg::*;
 
             .wbuf_empty_i                  (wbuf_empty_o),
             .mshr_empty_i                  (mshr_empty),
-            .refill_busy_i                 (refill_busy),
+            .refill_busy_i                 (|refill_busy),
             .rtab_empty_i                  (rtab_empty),
             .ctrl_empty_i                  (ctrl_empty),
             .flush_empty_i                 (flush_empty),
@@ -832,7 +832,7 @@ import hpdcache_pkg::*;
 
             .wbuf_empty_i                  (wbuf_empty_o),
             .mshr_empty_i                  (mshr_empty),
-            .refill_busy_i                 (refill_busy),
+            .refill_busy_i                 (|refill_busy),
             .rtab_empty_i                  (rtab_empty),
             .ctrl_empty_i                  (ctrl_empty),
 

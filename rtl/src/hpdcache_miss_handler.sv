@@ -75,7 +75,7 @@ import hpdcache_pkg::*;
     input  logic                  refill_req_ready_i  [nBanks],
     output logic                  refill_req_valid_o  [nBanks],
     output logic                  refill_is_error_o,
-    output logic                  refill_busy_o,
+    output logic [nBanks-1:0]     refill_busy_o,
     output logic                  refill_write_dir_o  [nBanks],
     output logic                  refill_write_data_o [nBanks],
     output hpdcache_refill_data_t refill_data_o,
@@ -424,7 +424,12 @@ import hpdcache_pkg::*;
 
     assign refill_is_error_o = (resp_meta_rdata.r_error == HPDCACHE_MEM_RESP_NOK);
 
-    assign refill_busy_o  = (refill_fsm_q != REFILL_IDLE);
+    always_comb begin : refill_busy_comb
+        for (int unsigned bank = 0; bank < nBanks; bank++) begin
+            refill_busy_o[bank] = bank == refill_bank_id && (refill_fsm_q != REFILL_IDLE);
+        end
+    end
+
     assign refill_word_o  = refill_cnt_q;
 
     assign inval_nline_o = resp_meta_rdata.inval_nline;
