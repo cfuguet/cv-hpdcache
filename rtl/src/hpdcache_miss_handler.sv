@@ -51,7 +51,9 @@ import hpdcache_pkg::*;
 
     parameter type hpdcache_mem_id_t = logic,
     parameter type hpdcache_mem_req_t = logic,
-    parameter type hpdcache_mem_resp_r_t = logic
+    parameter type hpdcache_mem_resp_r_t = logic,
+
+    localparam int unsigned nBanks = HPDcacheCfg.u.nBanks
 )
 //  }}}
 
@@ -64,33 +66,33 @@ import hpdcache_pkg::*;
     //      MISS interface
     //      {{{
     //          MISS request interface
-    input  logic                  miss_req_valid_i    [HPDcacheCfg.u.nBanks],
-    output logic                  miss_req_ready_o    [HPDcacheCfg.u.nBanks],
-    input  hpdcache_nline_t       miss_req_nline_i    [HPDcacheCfg.u.nBanks],
-    input  hpdcache_mshr_id_t     miss_req_mshr_id_i  [HPDcacheCfg.u.nBanks],
+    input  logic                  miss_req_valid_i    [nBanks],
+    output logic                  miss_req_ready_o    [nBanks],
+    input  hpdcache_nline_t       miss_req_nline_i    [nBanks],
+    input  hpdcache_mshr_id_t     miss_req_mshr_id_i  [nBanks],
 
     //          REFILL MISS / Invalidation interface
-    input  logic                  refill_req_ready_i  [HPDcacheCfg.u.nBanks],
-    output logic                  refill_req_valid_o  [HPDcacheCfg.u.nBanks],
+    input  logic                  refill_req_ready_i  [nBanks],
+    output logic                  refill_req_valid_o  [nBanks],
     output logic                  refill_is_error_o,
     output logic                  refill_busy_o,
-    output logic                  refill_write_dir_o  [HPDcacheCfg.u.nBanks],
-    output logic                  refill_write_data_o [HPDcacheCfg.u.nBanks],
+    output logic                  refill_write_dir_o  [nBanks],
+    output logic                  refill_write_data_o [nBanks],
     output hpdcache_refill_data_t refill_data_o,
     output hpdcache_word_t        refill_word_o,
-    output logic                  refill_updt_rtab_o  [HPDcacheCfg.u.nBanks],
+    output logic                  refill_updt_rtab_o  [nBanks],
 
-    output logic                  inval_check_dir_o   [HPDcacheCfg.u.nBanks],
-    output logic                  inval_write_dir_o   [HPDcacheCfg.u.nBanks],
+    output logic                  inval_check_dir_o   [nBanks],
+    output logic                  inval_write_dir_o   [nBanks],
     output hpdcache_nline_t       inval_nline_o,
-    input  logic                  inval_hit_i         [HPDcacheCfg.u.nBanks],
+    input  logic                  inval_hit_i         [nBanks],
     //      }}}
 
     //      MSHR ACK interface
     //      {{{
-    output logic                  mshr_ack_o    [HPDcacheCfg.u.nBanks],
-    output logic                  mshr_ack_cs_o [HPDcacheCfg.u.nBanks],
-    output hpdcache_mshr_id_t     mshr_ack_id_o [HPDcacheCfg.u.nBanks],
+    output logic                  mshr_ack_o    [nBanks],
+    output logic                  mshr_ack_cs_o [nBanks],
+    output hpdcache_mshr_id_t     mshr_ack_id_o [nBanks],
     //      }}}
 
     //      MEMORY interface
@@ -112,7 +114,7 @@ import hpdcache_pkg::*;
     //  {{{
     localparam hpdcache_uint REFILL_LAST_CHUNK_WORD = HPDcacheCfg.u.clWords -
                                                       HPDcacheCfg.u.accessWords;
-    localparam hpdcache_uint BANK_ID_WIDTH = HPDcacheCfg.u.nBanks > 1 ? $clog2(HPDcacheCfg.u.nBanks) : 1;
+    localparam hpdcache_uint BANK_ID_WIDTH = nBanks > 1 ? $clog2(nBanks) : 1;
 
     typedef enum logic {
         MISS_REQ_IDLE = 1'b0,
@@ -154,11 +156,11 @@ import hpdcache_pkg::*;
     hpdcache_refill_data_t   resp_data_rdata;
     logic                    resp_data_r;
 
-    mem_miss_req_t [HPDcacheCfg.u.nBanks-1:0] miss_fifo_rdata;
-    logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_rok;
-    logic [HPDcacheCfg.u.nBanks-1:0]          miss_fifo_r;
+    mem_miss_req_t [nBanks-1:0] miss_fifo_rdata;
+    logic [nBanks-1:0]          miss_fifo_rok;
+    logic [nBanks-1:0]          miss_fifo_r;
 
-    mem_miss_req_t            miss_req_w [HPDcacheCfg.u.nBanks];
+    mem_miss_req_t            miss_req_w [nBanks];
     logic                     miss_arb_ready;
     mem_miss_req_t            miss_arb_req;
     hpdcache_nline_t          miss_send_nline_d, miss_send_nline_q;
@@ -166,7 +168,7 @@ import hpdcache_pkg::*;
     logic [BANK_ID_WIDTH-1:0] miss_bank_id;
 
     logic [BANK_ID_WIDTH-1:0]        refill_bank_id;
-    logic [HPDcacheCfg.u.nBanks-1:0] refill_req_valid /*verilator isolate_assignments*/;
+    logic [nBanks-1:0] refill_req_valid /*verilator isolate_assignments*/;
 
     genvar bank_i;
     //  }}}
@@ -174,7 +176,7 @@ import hpdcache_pkg::*;
     //  Miss Request FIFOs & MUX
     //  {{{
 
-    for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin: gen_miss_req_buf
+    for (bank_i = 0; bank_i < nBanks; bank_i++) begin: gen_miss_req_buf
         assign miss_req_w[bank_i].mshr_id = miss_req_mshr_id_i[bank_i];
         assign miss_req_w[bank_i].nline = miss_req_nline_i[bank_i];
 
@@ -195,7 +197,7 @@ import hpdcache_pkg::*;
     end
 
     //      Arbiter
-    hpdcache_fxarb #(.N(HPDcacheCfg.u.nBanks)) req_arbiter_i
+    hpdcache_fxarb #(.N(nBanks)) req_arbiter_i
     (
         .clk_i,
         .rst_ni,
@@ -206,7 +208,7 @@ import hpdcache_pkg::*;
 
     //      Request multiplexor
     hpdcache_mux #(
-        .NINPUT         (HPDcacheCfg.u.nBanks),
+        .NINPUT         (nBanks),
         .DATA_WIDTH     ($bits(mem_miss_req_t)),
         .ONE_HOT_SEL    (1'b1)
     ) core_req_mux_i (
@@ -215,7 +217,7 @@ import hpdcache_pkg::*;
         .data_o         (miss_arb_req)
     );
 
-    hpdcache_1hot_to_binary #(.N(HPDcacheCfg.u.nBanks)) id_gen_i (
+    hpdcache_1hot_to_binary #(.N(nBanks)) id_gen_i (
         .val_i(miss_fifo_r),
         .val_o(miss_bank_id)
     );
@@ -284,13 +286,13 @@ import hpdcache_pkg::*;
     //  Refill FSM
     //  {{{
     //      ask permission to the refill arbiter if there is a pending refill
-    if (HPDcacheCfg.u.nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
+    if (nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
         assign refill_bank_id = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
     end else begin : gen_refill_bank_id_nbanks_not_gt_1
         assign refill_bank_id = 0;
     end
 
-    for (bank_i = 0; bank_i < HPDcacheCfg.u.nBanks; bank_i++) begin : gen_refill_valid
+    for (bank_i = 0; bank_i < nBanks; bank_i++) begin : gen_refill_valid
         assign refill_req_valid_o[bank_i] = refill_req_valid[bank_i];
     end
 
