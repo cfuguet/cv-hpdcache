@@ -226,6 +226,8 @@ import hpdcache_pkg::*;
     hpdcache_mem_req_t     mem_req_write;
     hpdcache_mem_req_w_t   mem_req_write_data;
     hpdcache_mem_resp_w_t  mem_resp_write;
+
+    logic [nBanks-1:0]     wbuf_empty;
     //  }}}
 
     //  Write/read to/from memory interfaces
@@ -284,6 +286,8 @@ import hpdcache_pkg::*;
             end
         end
     end
+
+    assign wbuf_empty_o = &wbuf_empty;
 
     hpdcache #(
         .HPDcacheCfg                       (Cfg),
@@ -354,7 +358,7 @@ import hpdcache_pkg::*;
         .evt_stall_refill_o,
         .evt_stall_o,
 
-        .wbuf_empty_o,
+        .wbuf_empty_o(wbuf_empty),
 
         .cfg_enable_i,
         .cfg_wbuf_threshold_i,

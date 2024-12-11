@@ -133,7 +133,7 @@ import hpdcache_pkg::*;
     output logic [nBanks-1:0]             evt_stall_o,
 
     //      Status interface
-    output logic                          wbuf_empty_o,
+    output logic [nBanks-1:0]             wbuf_empty_o,
 
     //      Configuration interface
     input  logic                          cfg_enable_i,
@@ -211,22 +211,6 @@ import hpdcache_pkg::*;
     logic                  inval_write_dir        [nBanks];
     hpdcache_nline_t       inval_nline;
     logic                  inval_hit              [nBanks];
-
-    logic                  wbuf_flush_all         [nBanks];
-    logic                  wbuf_write             [nBanks];
-    logic                  wbuf_write_ready;
-    wbuf_addr_t            wbuf_write_addr        [nBanks];
-    wbuf_data_t            wbuf_write_data        [nBanks];
-    wbuf_be_t              wbuf_write_be          [nBanks];
-    logic                  wbuf_write_uncacheable [nBanks];
-    logic                  wbuf_read_hit;
-    logic                  wbuf_read_flush_hit    [nBanks];
-    hpdcache_req_addr_t    wbuf_rtab_addr         [nBanks];
-    logic                  wbuf_rtab_is_read      [nBanks];
-    logic                  wbuf_rtab_hit_open;
-    logic                  wbuf_rtab_hit_pend;
-    logic                  wbuf_rtab_hit_sent;
-    logic                  wbuf_rtab_not_ready;
 
     logic                  uc_ready;
     logic                  uc_req_valid           [nBanks];
@@ -336,17 +320,17 @@ import hpdcache_pkg::*;
     logic                  mem_resp_read_uc_valid;
     hpdcache_mem_resp_r_t  mem_resp_read_uc;
 
-    logic                  mem_req_write_wbuf_ready;
-    logic                  mem_req_write_wbuf_valid;
-    hpdcache_mem_req_t     mem_req_write_wbuf;
+    logic                  mem_req_write_wbuf_ready[nBanks];
+    logic                  mem_req_write_wbuf_valid[nBanks];
+    hpdcache_mem_req_t     mem_req_write_wbuf[nBanks];
 
-    logic                  mem_req_write_wbuf_data_ready;
-    logic                  mem_req_write_wbuf_data_valid;
-    hpdcache_mem_req_w_t   mem_req_write_wbuf_data;
+    logic                  mem_req_write_wbuf_data_ready[nBanks];
+    logic                  mem_req_write_wbuf_data_valid[nBanks];
+    hpdcache_mem_req_w_t   mem_req_write_wbuf_data[nBanks];
 
-    logic                  mem_resp_write_wbuf_ready;
-    logic                  mem_resp_write_wbuf_valid;
-    hpdcache_mem_resp_w_t  mem_resp_write_wbuf;
+    logic                  mem_resp_write_wbuf_ready[nBanks];
+    logic                  mem_resp_write_wbuf_valid[nBanks];
+    hpdcache_mem_resp_w_t  mem_resp_write_wbuf[nBanks];
 
     logic                  mem_req_write_flush_ready;
     logic                  mem_req_write_flush_valid;
@@ -468,6 +452,7 @@ import hpdcache_pkg::*;
                 .wbuf_addr_t                        (wbuf_addr_t),
                 .wbuf_data_t                        (wbuf_data_t),
                 .wbuf_be_t                          (wbuf_be_t),
+                .wbuf_timecnt_t                     (wbuf_timecnt_t),
                 .hpdcache_access_data_t             (hpdcache_access_data_t),
                 .hpdcache_access_be_t               (hpdcache_access_be_t),
                 .hpdcache_req_addr_t                (hpdcache_req_addr_t),
@@ -477,7 +462,11 @@ import hpdcache_pkg::*;
                 .hpdcache_req_data_t                (hpdcache_req_data_t),
                 .hpdcache_req_be_t                  (hpdcache_req_be_t),
                 .hpdcache_req_t                     (hpdcache_req_t),
-                .hpdcache_rsp_t                     (hpdcache_rsp_t)
+                .hpdcache_rsp_t                     (hpdcache_rsp_t),
+                .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
+                .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
+                .hpdcache_mem_req_w_t               (hpdcache_mem_req_w_t),
+                .hpdcache_mem_resp_w_t              (hpdcache_mem_resp_w_t)
             ) hpdcache_ctrl_i(
                 .clk_i,
                 .rst_ni,
@@ -540,22 +529,19 @@ import hpdcache_pkg::*;
                 .inval_nline_i                      (inval_nline),
                 .inval_hit_o                        (inval_hit[bankId]),
 
-                .wbuf_empty_i                       (wbuf_empty_o),
-                .wbuf_flush_all_o                   (wbuf_flush_all[bankId]),
-                .wbuf_write_o                       (wbuf_write[bankId]),
-                .wbuf_write_ready_i                 (wbuf_write_ready),
-                .wbuf_write_addr_o                  (wbuf_write_addr[bankId]),
-                .wbuf_write_data_o                  (wbuf_write_data[bankId]),
-                .wbuf_write_be_o                    (wbuf_write_be[bankId]),
-                .wbuf_write_uncacheable_o           (wbuf_write_uncacheable[bankId]),
-                .wbuf_read_hit_i                    (wbuf_read_hit),
-                .wbuf_read_flush_hit_o              (wbuf_read_flush_hit[bankId]),
-                .wbuf_rtab_addr_o                   (wbuf_rtab_addr[bankId]),
-                .wbuf_rtab_is_read_o                (wbuf_rtab_is_read[bankId]),
-                .wbuf_rtab_hit_open_i               (wbuf_rtab_hit_open),
-                .wbuf_rtab_hit_pend_i               (wbuf_rtab_hit_pend),
-                .wbuf_rtab_hit_sent_i               (wbuf_rtab_hit_sent),
-                .wbuf_rtab_not_ready_i              (wbuf_rtab_not_ready),
+                .wbuf_empty_o                       (wbuf_empty_o[bankId]),
+
+                .mem_req_write_wbuf_ready_i         (mem_req_write_wbuf_ready[bankId]),
+                .mem_req_write_wbuf_valid_o         (mem_req_write_wbuf_valid[bankId]),
+                .mem_req_write_wbuf_o               (mem_req_write_wbuf[bankId]),
+
+                .mem_req_write_wbuf_data_ready_i    (mem_req_write_wbuf_data_ready[bankId]),
+                .mem_req_write_wbuf_data_valid_o    (mem_req_write_wbuf_data_valid[bankId]),
+                .mem_req_write_wbuf_data_o          (mem_req_write_wbuf_data[bankId]),
+
+                .mem_resp_write_wbuf_ready_o        (mem_resp_write_wbuf_ready[bankId]),
+                .mem_resp_write_wbuf_valid_i        (mem_resp_write_wbuf_valid[bankId]),
+                .mem_resp_write_wbuf_i              (mem_resp_write_wbuf[bankId]),
 
                 .uc_busy_i                          (~uc_ready),
                 .uc_lrsc_snoop_o                    (uc_lrsc_snoop[bankId]),
@@ -618,6 +604,11 @@ import hpdcache_pkg::*;
                 .cfg_rtab_single_entry_i,
                 .cfg_default_wb_i                   (cfg_default_wb),
 
+                .cfg_wbuf_threshold_i,
+                .cfg_wbuf_reset_timecnt_on_write_i,
+                .cfg_wbuf_sequential_waw_i,
+                .cfg_wbuf_inhibit_write_coalescing_i,
+
                 .evt_cache_write_miss_o             (evt_cache_write_miss_o[bankId]),
                 .evt_cache_read_miss_o              (evt_cache_read_miss_o[bankId]),
                 .evt_uncached_req_o                 (evt_uncached_req_o[bankId]),
@@ -637,81 +628,6 @@ import hpdcache_pkg::*;
     assign rtab_empty = |bank_rtab_empty;
     assign ctrl_empty = |bank_ctrl_empty;
     assign mshr_empty = |bank_mshr_empty;
-    //  }}}
-
-    //  HPDcache write-buffer
-    //  {{{
-    if (HPDcacheCfg.u.wtEn) begin : gen_wbuf
-        hpdcache_wbuf #(
-            .HPDcacheCfg                        (HPDcacheCfg),
-            .wbuf_addr_t                        (wbuf_addr_t),
-            .wbuf_timecnt_t                     (wbuf_timecnt_t),
-            .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
-            .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
-            .hpdcache_mem_req_w_t               (hpdcache_mem_req_w_t),
-            .hpdcache_mem_resp_w_t              (hpdcache_mem_resp_w_t)
-        ) hpdcache_wbuf_i(
-            .clk_i,
-            .rst_ni,
-
-            .empty_o                            (wbuf_empty_o),
-            .full_o                             (/* unused */),
-            .flush_all_i                        (wbuf_flush_all[0]),
-
-            .cfg_threshold_i                    (cfg_wbuf_threshold_i),
-            .cfg_reset_timecnt_on_write_i       (cfg_wbuf_reset_timecnt_on_write_i),
-            .cfg_sequential_waw_i               (cfg_wbuf_sequential_waw_i),
-            .cfg_inhibit_write_coalescing_i     (cfg_wbuf_inhibit_write_coalescing_i),
-
-            .write_i                            (wbuf_write[0]),
-            .write_ready_o                      (wbuf_write_ready),
-            .write_addr_i                       (wbuf_write_addr[0]),
-            .write_data_i                       (wbuf_write_data[0]),
-            .write_be_i                         (wbuf_write_be[0]),
-            .write_uc_i                         (wbuf_write_uncacheable[0]),
-
-            .read_addr_i                        (wbuf_write_addr[0]),
-            .read_hit_o                         (wbuf_read_hit),
-            .read_flush_hit_i                   (wbuf_read_flush_hit[0]),
-
-            .replay_addr_i                      (wbuf_rtab_addr[0]),
-            .replay_is_read_i                   (wbuf_rtab_is_read[0]),
-            .replay_open_hit_o                  (wbuf_rtab_hit_open),
-            .replay_pend_hit_o                  (wbuf_rtab_hit_pend),
-            .replay_sent_hit_o                  (wbuf_rtab_hit_sent),
-            .replay_not_ready_o                 (wbuf_rtab_not_ready),
-
-            .mem_req_write_ready_i              (mem_req_write_wbuf_ready),
-            .mem_req_write_valid_o              (mem_req_write_wbuf_valid),
-            .mem_req_write_o                    (mem_req_write_wbuf),
-
-            .mem_req_write_data_ready_i         (mem_req_write_wbuf_data_ready),
-            .mem_req_write_data_valid_o         (mem_req_write_wbuf_data_valid),
-            .mem_req_write_data_o               (mem_req_write_wbuf_data),
-
-            .mem_resp_write_ready_o             (mem_resp_write_wbuf_ready),
-            .mem_resp_write_valid_i             (mem_resp_write_wbuf_valid),
-            .mem_resp_write_i                   (mem_resp_write_wbuf)
-        );
-    end else begin : gen_no_wbuf
-        //  The write-buffer behaves as a black-hole: consumes but do not produce data
-        assign wbuf_empty_o                  = 1'b1;
-        assign wbuf_write_ready              = 1'b1;
-        assign wbuf_read_hit                 = 1'b0;
-        assign wbuf_rtab_hit_open            = 1'b0;
-        assign wbuf_rtab_hit_pend            = 1'b0;
-        assign wbuf_rtab_hit_sent            = 1'b0;
-        assign wbuf_rtab_not_ready           = 1'b0;
-        assign mem_req_write_wbuf_valid      = 1'b0;
-        assign mem_req_write_wbuf            = '{
-            mem_req_command: HPDCACHE_MEM_READ,
-            mem_req_atomic : HPDCACHE_MEM_ATOMIC_ADD,
-            default        : '0
-        };
-        assign mem_req_write_wbuf_data_valid = 1'b0;
-        assign mem_req_write_wbuf_data       = '0;
-        assign mem_resp_write_wbuf_ready     = 1'b1;
-    end
     //  }}}
 
     //  Miss handler
@@ -1121,27 +1037,33 @@ import hpdcache_pkg::*;
     //      Write request interface
     //
     //      There is a fixed-priority arbiter between:
-    //      - the flush controller (higher priority)
-    //      - the write buffer
-    //      - the uncacheable request handler (lower priority)
-    logic                [2:0] arb_mem_req_write_ready;
-    logic                [2:0] arb_mem_req_write_valid;
-    hpdcache_mem_req_t   [2:0] arb_mem_req_write;
+    //      - the write buffer (higher priority)
+    //      - the flush controller
+    //      - the uncacheable request handler (lower priori
 
-    logic                [2:0] arb_mem_req_write_data_valid;
-    logic                [2:0] arb_mem_req_write_data_ready;
-    hpdcache_mem_req_w_t [2:0] arb_mem_req_write_data;
+    localparam int unsigned writeArbNRequesters = nBanks + 2;
+
+    localparam int unsigned flushCtrlWriteArbId = nBanks;
+    localparam int unsigned uncacheableWriteArbId = nBanks + 1;
+
+    logic                [writeArbNRequesters-1:0] arb_mem_req_write_ready;
+    logic                [writeArbNRequesters-1:0] arb_mem_req_write_valid;
+    hpdcache_mem_req_t   [writeArbNRequesters-1:0] arb_mem_req_write;
+
+    logic                [writeArbNRequesters-1:0] arb_mem_req_write_data_valid;
+    logic                [writeArbNRequesters-1:0] arb_mem_req_write_data_ready;
+    hpdcache_mem_req_w_t [writeArbNRequesters-1:0] arb_mem_req_write_data;
 
     //      Split the ID space into 3 segments:
     //      1111...1111  -> Uncached writes
     //      1xxx...xxxx  -> Flush writes (where at least one x is 0)
-    //      0xxx...xxxx  -> Write buffer writes
+    //      0bbx...xxxx  -> Write buffer writes (where b is the bank id)
     function automatic hpdcache_mem_req_t hpdcache_req_write_sel_id(
-        hpdcache_mem_req_t req, int kind
+        hpdcache_mem_req_t req, int unsigned bankId, int kind
     );
         //  Request from the write buffer
         unique if (kind == 0) begin
-            req.mem_req_id = {1'b0, req.mem_req_id[0 +: HPDcacheCfg.u.memIdWidth-1]};
+            req.mem_req_id = {1'b0, bankId[BankIdWidth-1:0], req.mem_req_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
         end
         //  Request from the flush controller
         else if (kind == 1) begin
@@ -1159,7 +1081,7 @@ import hpdcache_pkg::*;
     );
         //  Response to the write buffer
         unique if (kind == 0) begin
-            resp.mem_resp_w_id = {1'b0, resp.mem_resp_w_id[0 +: HPDcacheCfg.u.memIdWidth-1]};
+            resp.mem_resp_w_id = {1'b0, {BankIdWidth{1'b0}}, resp.mem_resp_w_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
         end
         //  Response to the flush controller
         else if (kind == 1) begin
@@ -1172,32 +1094,44 @@ import hpdcache_pkg::*;
         return resp;
     endfunction
 
-    assign mem_req_write_wbuf_ready        = arb_mem_req_write_ready[0];
-    assign arb_mem_req_write_valid[0]      = mem_req_write_wbuf_valid;
-    assign arb_mem_req_write[0]            = hpdcache_req_write_sel_id(mem_req_write_wbuf, 0);
+    // Returns the bank ID from the response
+    function automatic logic[BankIdWidth-1:0] hpdcache_resp_write_bank_id(
+        hpdcache_mem_resp_w_t resp
+    );
+        return resp.mem_resp_w_id[HPDcacheCfg.u.memIdWidth-2:HPDcacheCfg.u.memIdWidth-1-BankIdWidth];
+    endfunction
 
-    assign mem_req_write_wbuf_data_ready   = arb_mem_req_write_data_ready[0];
-    assign arb_mem_req_write_data_valid[0] = mem_req_write_wbuf_data_valid;
-    assign arb_mem_req_write_data[0]       = mem_req_write_wbuf_data;
+    generate
+        genvar wArbBankId;
+        for (wArbBankId = 0; wArbBankId < nBanks; wArbBankId++) begin: gen_write_arb_intf
+            assign mem_req_write_wbuf_ready[wArbBankId]      = arb_mem_req_write_ready[wArbBankId];
+            assign arb_mem_req_write_valid[wArbBankId]       = mem_req_write_wbuf_valid[wArbBankId];
+            assign arb_mem_req_write[wArbBankId]             = hpdcache_req_write_sel_id(mem_req_write_wbuf[wArbBankId], wArbBankId, 0);
 
-    assign mem_req_write_flush_ready       = arb_mem_req_write_ready[1];
-    assign arb_mem_req_write_valid[1]      = mem_req_write_flush_valid;
-    assign arb_mem_req_write[1]            = hpdcache_req_write_sel_id(mem_req_write_flush, 1);
+            assign mem_req_write_wbuf_data_ready[wArbBankId] = arb_mem_req_write_data_ready[wArbBankId];
+            assign arb_mem_req_write_data_valid[wArbBankId]  = mem_req_write_wbuf_data_valid[wArbBankId];
+            assign arb_mem_req_write_data[wArbBankId]        = mem_req_write_wbuf_data[wArbBankId];
+        end
+    endgenerate
 
-    assign mem_req_write_flush_data_ready  = arb_mem_req_write_data_ready[1];
-    assign arb_mem_req_write_data_valid[1] = mem_req_write_flush_data_valid;
-    assign arb_mem_req_write_data[1]       = mem_req_write_flush_data;
+    assign mem_req_write_flush_ready                           = arb_mem_req_write_ready[flushCtrlWriteArbId];
+    assign arb_mem_req_write_valid[flushCtrlWriteArbId]        = mem_req_write_flush_valid;
+    assign arb_mem_req_write[flushCtrlWriteArbId]              = hpdcache_req_write_sel_id(mem_req_write_flush, 0, 1);
 
-    assign mem_req_write_uc_ready          = arb_mem_req_write_ready[2];
-    assign arb_mem_req_write_valid[2]      = mem_req_write_uc_valid;
-    assign arb_mem_req_write[2]            = hpdcache_req_write_sel_id(mem_req_write_uc, 2);
+    assign mem_req_write_flush_data_ready                      = arb_mem_req_write_data_ready[flushCtrlWriteArbId];
+    assign arb_mem_req_write_data_valid[flushCtrlWriteArbId]   = mem_req_write_flush_data_valid;
+    assign arb_mem_req_write_data[flushCtrlWriteArbId]         = mem_req_write_flush_data;
 
-    assign mem_req_write_uc_data_ready     = arb_mem_req_write_data_ready[2];
-    assign arb_mem_req_write_data_valid[2] = mem_req_write_uc_data_valid;
-    assign arb_mem_req_write_data[2]       = mem_req_write_uc_data;
+    assign mem_req_write_uc_ready                              = arb_mem_req_write_ready[uncacheableWriteArbId];
+    assign arb_mem_req_write_valid[uncacheableWriteArbId]      = mem_req_write_uc_valid;
+    assign arb_mem_req_write[uncacheableWriteArbId]            = hpdcache_req_write_sel_id(mem_req_write_uc, 0, 2);
+
+    assign mem_req_write_uc_data_ready                         = arb_mem_req_write_data_ready[uncacheableWriteArbId];
+    assign arb_mem_req_write_data_valid[uncacheableWriteArbId] = mem_req_write_uc_data_valid;
+    assign arb_mem_req_write_data[uncacheableWriteArbId]       = mem_req_write_uc_data;
 
     hpdcache_mem_req_write_arbiter #(
-        .N                             (3),
+        .N                             (writeArbNRequesters), // 1 write buffer * nBanks + flush controller + uncacheables
         .hpdcache_mem_req_t            (hpdcache_mem_req_t),
         .hpdcache_mem_req_w_t          (hpdcache_mem_req_w_t)
     ) hpdcache_mem_req_write_arbiter_i (
@@ -1225,7 +1159,9 @@ import hpdcache_pkg::*;
     always_comb
     begin : mem_resp_write_demux_comb
         mem_resp_write_flush_valid = 1'b0;
-        mem_resp_write_wbuf_valid = 1'b0;
+        for (int unsigned bank = 0; bank < nBanks; bank++) begin
+            mem_resp_write_wbuf_valid[bank] = 1'b0;
+        end
         mem_resp_write_uc_valid = 1'b0;
         mem_resp_write_ready_o = 1'b0;
         if (mem_resp_write_valid_i) begin
@@ -1236,13 +1172,19 @@ import hpdcache_pkg::*;
                 mem_resp_write_flush_valid = 1'b1;
                 mem_resp_write_ready_o = mem_resp_write_flush_ready;
             end else begin
-                mem_resp_write_wbuf_valid = 1'b1;
-                mem_resp_write_ready_o = mem_resp_write_wbuf_ready;
+                mem_resp_write_wbuf_valid[hpdcache_resp_write_bank_id(mem_resp_write_i)] = 1'b1;
+                mem_resp_write_ready_o = mem_resp_write_wbuf_ready[hpdcache_resp_write_bank_id(mem_resp_write_i)];
             end
         end
     end
 
-    assign mem_resp_write_wbuf = hpdcache_resp_write_sel_id(mem_resp_write_i, 0);
+    generate
+        genvar wbufRespBankId;
+        for (wbufRespBankId = 0; wbufRespBankId < nBanks; wbufRespBankId++) begin: gen_wbuf_resp
+            assign mem_resp_write_wbuf[wbufRespBankId] = hpdcache_resp_write_sel_id(mem_resp_write_i, 0);
+        end
+    endgenerate
+
     assign mem_resp_write_flush = hpdcache_resp_write_sel_id(mem_resp_write_i, 1);
     assign mem_resp_write_uc = hpdcache_resp_write_sel_id(mem_resp_write_i, 2);
     //  }}}
@@ -1272,7 +1214,7 @@ import hpdcache_pkg::*;
                 ($clog2(HPDcacheCfg.u.mshrWays * HPDcacheCfg.u.mshrSets) + 1)) else
                 $fatal("insufficient ID bits on the mem interface to transport misses");
         wbuf_mem_id_width_assert:
-            assert (HPDcacheCfg.u.memIdWidth >= (HPDcacheCfg.wbufDirPtrWidth + 1)) else
+            assert (HPDcacheCfg.u.memIdWidth >= (HPDcacheCfg.wbufDirPtrWidth + HPDcacheCfg.u.nBanks + 1)) else
                 $fatal("insufficient ID bits on the mem interface to transport writes");
         //wt_or_wb_assert:
         //    assert (HPDcacheCfg.u.wtEn || HPDcacheCfg.u.wbEn) else

@@ -49,6 +49,7 @@ import hpdcache_pkg::*;
     parameter type wbuf_addr_t = logic,
     parameter type wbuf_data_t = logic,
     parameter type wbuf_be_t = logic,
+    parameter type wbuf_timecnt_t = logic,
 
     parameter type hpdcache_access_data_t = logic,
     parameter type hpdcache_access_be_t = logic,
@@ -61,7 +62,12 @@ import hpdcache_pkg::*;
     parameter type hpdcache_req_be_t = logic,
 
     parameter type hpdcache_req_t = logic,
-    parameter type hpdcache_rsp_t = logic
+    parameter type hpdcache_rsp_t = logic,
+
+    parameter type hpdcache_mem_id_t = logic,
+    parameter type hpdcache_mem_req_t = logic,
+    parameter type hpdcache_mem_req_w_t = logic,
+    parameter type hpdcache_mem_resp_w_t = logic
 )
     // }}}
 
@@ -70,9 +76,6 @@ import hpdcache_pkg::*;
 (
     input  logic                  clk_i,
     input  logic                  rst_ni,
-
-    //      Config
-    input  logic cfg_prefetch_updt_sel_victim_i,
 
     //      Core request interface
     input  logic                  core_req_valid_i,
@@ -139,22 +142,19 @@ import hpdcache_pkg::*;
     output logic                  inval_hit_o,
 
     //      Write buffer interface
-    input  logic                  wbuf_empty_i,
-    output logic                  wbuf_flush_all_o,
-    output logic                  wbuf_write_o,
-    input  logic                  wbuf_write_ready_i,
-    output wbuf_addr_t            wbuf_write_addr_o,
-    output wbuf_data_t            wbuf_write_data_o,
-    output wbuf_be_t              wbuf_write_be_o,
-    output logic                  wbuf_write_uncacheable_o,
-    input  logic                  wbuf_read_hit_i,
-    output logic                  wbuf_read_flush_hit_o,
-    output hpdcache_req_addr_t    wbuf_rtab_addr_o,
-    output logic                  wbuf_rtab_is_read_o,
-    input  logic                  wbuf_rtab_hit_open_i,
-    input  logic                  wbuf_rtab_hit_pend_i,
-    input  logic                  wbuf_rtab_hit_sent_i,
-    input  logic                  wbuf_rtab_not_ready_i,
+    output logic                  wbuf_empty_o,
+
+    input  logic                  mem_req_write_wbuf_ready_i,
+    output logic                  mem_req_write_wbuf_valid_o,
+    output hpdcache_mem_req_t     mem_req_write_wbuf_o,
+
+    input  logic                  mem_req_write_wbuf_data_ready_i,
+    output logic                  mem_req_write_wbuf_data_valid_o,
+    output hpdcache_mem_req_w_t   mem_req_write_wbuf_data_o,
+
+    output logic                  mem_resp_write_wbuf_ready_o,
+    input  logic                  mem_resp_write_wbuf_valid_i,
+    input  hpdcache_mem_resp_w_t  mem_resp_write_wbuf_i,
 
     //      Uncacheable request handler
     input  logic                  uc_busy_i,
@@ -219,6 +219,15 @@ import hpdcache_pkg::*;
     input  logic                  cfg_prefetch_updt_plru_i,
     input  logic                  cfg_rtab_single_entry_i,
     input  logic                  cfg_default_wb_i,
+    input  logic                  cfg_prefetch_updt_sel_victim_i,
+    //    Write Buffer timer threshold
+    input  wbuf_timecnt_t         cfg_wbuf_threshold_i,
+    //    Write Buffer reset timer on write
+    input  logic                  cfg_wbuf_reset_timecnt_on_write_i,
+    //    Write Buffer sequentialize write-after-write hazards
+    input  logic                  cfg_wbuf_sequential_waw_i,
+    //    Write Buffer inhibit write coalescing
+    input  logic                  cfg_wbuf_inhibit_write_coalescing_i,
 
     //   Performance events
     output logic                  evt_cache_write_miss_o,
@@ -431,6 +440,19 @@ import hpdcache_pkg::*;
     // Core refill responses FIFO r/w
     logic refill_core_rsp_valid_w, refill_core_rsp_valid_r;
     hpdcache_rsp_t refill_core_rsp_w, refill_core_rsp_r;
+
+    logic                    wbuf_flush;
+    logic                    wbuf_write;
+    logic                    wbuf_write_ready;
+    logic                    wbuf_write_uncacheable;
+    logic                    wbuf_read_hit;
+    logic                    wbuf_read_flush_hit;
+    hpdcache_req_addr_t      wbuf_rtab_addr;
+    logic                    wbuf_rtab_is_read;
+    logic                    wbuf_rtab_hit_open;
+    logic                    wbuf_rtab_hit_pend;
+    logic                    wbuf_rtab_hit_sent;
+    logic                    wbuf_rtab_not_ready;
 
     //  }}}
 
@@ -645,11 +667,11 @@ import hpdcache_pkg::*;
         .refill_busy_i,
         .refill_core_rsp_valid_i            (refill_core_rsp_valid_r),
 
-        .wbuf_write_valid_o                 (wbuf_write_o),
-        .wbuf_write_ready_i,
-        .wbuf_read_hit_i,
-        .wbuf_write_uncacheable_o,
-        .wbuf_read_flush_hit_o,
+        .wbuf_write_valid_o                 (wbuf_write),
+        .wbuf_write_ready_i                 (wbuf_write_ready),
+        .wbuf_read_hit_i                    (wbuf_read_hit),
+        .wbuf_write_uncacheable_o           (wbuf_write_uncacheable),
+        .wbuf_read_flush_hit_o              (wbuf_read_flush_hit),
 
         .uc_busy_i,
         .uc_req_valid_o,
@@ -735,12 +757,12 @@ import hpdcache_pkg::*;
         .pop_rback_i                        (st1_rtab_pop_try_rback),
         .pop_rback_ptr_i                    (st1_rtab_pop_try_ptr_q),
 
-        .wbuf_addr_o                        (wbuf_rtab_addr_o),
-        .wbuf_is_read_o                     (wbuf_rtab_is_read_o),
-        .wbuf_hit_open_i                    (wbuf_rtab_hit_open_i),
-        .wbuf_hit_pend_i                    (wbuf_rtab_hit_pend_i),
-        .wbuf_hit_sent_i                    (wbuf_rtab_hit_sent_i),
-        .wbuf_not_ready_i                   (wbuf_rtab_not_ready_i),
+        .wbuf_addr_o                        (wbuf_rtab_addr),
+        .wbuf_is_read_o                     (wbuf_rtab_is_read),
+        .wbuf_hit_open_i                    (wbuf_rtab_hit_open),
+        .wbuf_hit_pend_i                    (wbuf_rtab_hit_pend),
+        .wbuf_hit_sent_i                    (wbuf_rtab_hit_sent),
+        .wbuf_not_ready_i                   (wbuf_rtab_not_ready),
 
         .miss_ready_i                       (miss_req_ready_i),
 
@@ -1165,12 +1187,79 @@ import hpdcache_pkg::*;
 
     //  }}}
 
-    //  Write buffer outputs
+    //  HPDcache write-buffer
     //  {{{
-    assign wbuf_write_addr_o = st1_req_addr;
-    assign wbuf_write_data_o = st1_req.wdata;
-    assign wbuf_write_be_o   = st1_req.be;
-    assign wbuf_flush_all_o  = cmo_wbuf_flush_all_i | uc_wbuf_flush_all_i | wbuf_flush_i;
+    assign wbuf_flush = cmo_wbuf_flush_all_i | uc_wbuf_flush_all_i | wbuf_flush_i;
+
+    if (HPDcacheCfg.u.wtEn) begin : gen_wbuf
+        hpdcache_wbuf #(
+            .HPDcacheCfg                        (HPDcacheCfg),
+            .wbuf_addr_t                        (wbuf_addr_t),
+            .wbuf_timecnt_t                     (wbuf_timecnt_t),
+            .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
+            .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
+            .hpdcache_mem_req_w_t               (hpdcache_mem_req_w_t),
+            .hpdcache_mem_resp_w_t              (hpdcache_mem_resp_w_t)
+        ) hpdcache_wbuf_i(
+            .clk_i,
+            .rst_ni,
+
+            .empty_o                            (wbuf_empty_o),
+            .full_o                             (/* unused */),
+            .flush_all_i                        (wbuf_flush),
+
+            .cfg_threshold_i                    (cfg_wbuf_threshold_i),
+            .cfg_reset_timecnt_on_write_i       (cfg_wbuf_reset_timecnt_on_write_i),
+            .cfg_sequential_waw_i               (cfg_wbuf_sequential_waw_i),
+            .cfg_inhibit_write_coalescing_i     (cfg_wbuf_inhibit_write_coalescing_i),
+
+            .write_i                            (wbuf_write),
+            .write_ready_o                      (wbuf_write_ready),
+            .write_addr_i                       (st1_req_addr),
+            .write_data_i                       (st1_req.wdata),
+            .write_be_i                         (st1_req.be),
+            .write_uc_i                         (wbuf_write_uncacheable),
+
+            .read_addr_i                        (st1_req_addr),
+            .read_hit_o                         (wbuf_read_hit),
+            .read_flush_hit_i                   (wbuf_read_flush_hit),
+
+            .replay_addr_i                      (wbuf_rtab_addr),
+            .replay_is_read_i                   (wbuf_rtab_is_read),
+            .replay_open_hit_o                  (wbuf_rtab_hit_open),
+            .replay_pend_hit_o                  (wbuf_rtab_hit_pend),
+            .replay_sent_hit_o                  (wbuf_rtab_hit_sent),
+            .replay_not_ready_o                 (wbuf_rtab_not_ready),
+
+            .mem_req_write_ready_i              (mem_req_write_wbuf_ready_i),
+            .mem_req_write_valid_o              (mem_req_write_wbuf_valid_o),
+            .mem_req_write_o                    (mem_req_write_wbuf_o),
+
+            .mem_req_write_data_ready_i         (mem_req_write_wbuf_data_ready_i),
+            .mem_req_write_data_valid_o         (mem_req_write_wbuf_data_valid_o),
+            .mem_req_write_data_o               (mem_req_write_wbuf_data_o),
+
+            .mem_resp_write_ready_o             (mem_resp_write_wbuf_ready_o),
+            .mem_resp_write_valid_i             (mem_resp_write_wbuf_valid_i),
+            .mem_resp_write_i                   (mem_resp_write_wbuf_i)
+        );
+    end else begin : gen_no_wbuf
+        //  The write-buffer behaves as a black-hole: consumes but do not produce data
+        assign wbuf_empty_o                    = 1'b1;
+        assign wbuf_rtab_hit_open              = 1'b0;
+        assign wbuf_rtab_hit_pend              = 1'b0;
+        assign wbuf_rtab_hit_sent              = 1'b0;
+        assign wbuf_rtab_not_ready             = 1'b0;
+        assign mem_req_write_wbuf_valid_o      = 1'b0;
+        assign mem_req_write_wbuf_o            = '{
+            mem_req_command: HPDCACHE_MEM_READ,
+            mem_req_atomic : HPDCACHE_MEM_ATOMIC_ADD,
+            default        : '0
+        };
+        assign mem_req_write_wbuf_data_valid_o = 1'b0;
+        assign mem_req_write_wbuf_data_o       = '0;
+        assign mem_resp_write_wbuf_ready_o     = 1'b1;
+    end
     //  }}}
 
     //  Miss handler outputs
