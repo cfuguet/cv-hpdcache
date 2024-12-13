@@ -53,6 +53,8 @@ import hpdcache_pkg::*;
     parameter type hpdcache_mem_req_t = logic,
     parameter type hpdcache_mem_resp_r_t = logic,
 
+    parameter type hpdcache_bank_id_t = logic,
+
     localparam int unsigned nBanks = HPDcacheCfg.u.nBanks
 )
 //  }}}
@@ -114,7 +116,6 @@ import hpdcache_pkg::*;
     //  {{{
     localparam hpdcache_uint REFILL_LAST_CHUNK_WORD = HPDcacheCfg.u.clWords -
                                                       HPDcacheCfg.u.accessWords;
-    localparam hpdcache_uint BANK_ID_WIDTH = nBanks > 1 ? $clog2(nBanks) : 1;
 
     typedef enum logic {
         MISS_REQ_IDLE = 1'b0,
@@ -165,9 +166,9 @@ import hpdcache_pkg::*;
     mem_miss_req_t            miss_arb_req;
     hpdcache_nline_t          miss_send_nline_d, miss_send_nline_q;
     hpdcache_mem_id_t         miss_send_id_d, miss_send_id_q;
-    logic [BANK_ID_WIDTH-1:0] miss_bank_id;
+    hpdcache_bank_id_t        miss_bank_id;
 
-    logic [BANK_ID_WIDTH-1:0]        refill_bank_id;
+    hpdcache_bank_id_t refill_bank_id;
     logic [nBanks-1:0] refill_req_valid /*verilator isolate_assignments*/;
 
     genvar bank_i;
@@ -287,7 +288,7 @@ import hpdcache_pkg::*;
     //  {{{
     //      ask permission to the refill arbiter if there is a pending refill
     if (nBanks > 1) begin : gen_refill_bank_id_nbanks_gt_1
-        assign refill_bank_id = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: BANK_ID_WIDTH];
+        assign refill_bank_id = resp_meta_rdata.r_id[HPDcacheCfg.mshrIdWidth +: $bits(hpdcache_bank_id_t)];
     end else begin : gen_refill_bank_id_nbanks_not_gt_1
         assign refill_bank_id = 0;
     end

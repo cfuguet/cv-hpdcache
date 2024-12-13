@@ -62,6 +62,7 @@ import hpdcache_pkg::*;
 
     localparam int nReqs  = HPDcacheCfg.u.nRequesters,
     localparam int nBanks = HPDcacheCfg.u.nBanks,
+    localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1,
 
     /* FIXME this is temporary while developing the multi-banking support */
     localparam bit ENABLE_UNCACHED = (nBanks == 1),
@@ -158,6 +159,7 @@ import hpdcache_pkg::*;
     typedef logic unsigned [HPDcacheCfg.u.ways-1:0] hpdcache_way_vector_t;
     typedef logic unsigned [HPDcacheCfg.wayIndexWidth-1:0] hpdcache_way_t;
     typedef logic [HPDcacheCfg.mshrIdWidth-1:0] hpdcache_mshr_id_t;
+    typedef logic [BankIdWidth-1:0] hpdcache_bank_id_t;
 
     //  Cache Directory entry definition
     //  {{{
@@ -385,14 +387,12 @@ import hpdcache_pkg::*;
 
     //  bank crossbar
     //  {{{
-    localparam BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1;
-    typedef logic [BankIdWidth-1:0] bank_id_t;
-    typedef bank_id_t[2**BankIdWidth-1:0] bank_rt_t;
+    typedef hpdcache_bank_id_t[2**BankIdWidth-1:0] bank_rt_t;
 
     function automatic bank_rt_t buildBankRt();
         bank_rt_t ret;
         for (int unsigned i = 0; i < 2**BankIdWidth; i++) begin
-            ret[i] = bank_id_t'(i % nBanks);
+            ret[i] = hpdcache_bank_id_t'(i % nBanks);
         end
         return ret;
     endfunction
@@ -648,7 +648,8 @@ import hpdcache_pkg::*;
         .hpdcache_rsp_t                     (hpdcache_rsp_t),
         .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
         .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
-        .hpdcache_mem_resp_r_t              (hpdcache_mem_resp_r_t)
+        .hpdcache_mem_resp_r_t              (hpdcache_mem_resp_r_t),
+        .hpdcache_bank_id_t                 (hpdcache_bank_id_t)
     ) hpdcache_miss_handler_i(
         .clk_i,
         .rst_ni,
