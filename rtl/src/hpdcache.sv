@@ -431,198 +431,196 @@ import hpdcache_pkg::*;
     );
     //  }}}
 
-    generate
-        genvar bankId;
-        for (bankId = 0; bankId < nBanks; bankId++) begin: gen_banks
-            //  bank controller
-            //  {{{
-            hpdcache_ctrl #(
-                .HPDcacheCfg                        (HPDcacheCfg),
-                .hpdcache_nline_t                   (hpdcache_nline_t),
-                .hpdcache_tag_t                     (hpdcache_tag_t),
-                .hpdcache_set_t                     (hpdcache_set_t),
-                .hpdcache_word_t                    (hpdcache_word_t),
-                .hpdcache_data_word_t               (hpdcache_data_word_t),
-                .hpdcache_data_be_t                 (hpdcache_data_be_t),
-                .hpdcache_dir_entry_t               (hpdcache_dir_entry_t),
-                .hpdcache_way_vector_t              (hpdcache_way_vector_t),
-                .hpdcache_way_t                     (hpdcache_way_t),
-                .hpdcache_mshr_id_t                 (hpdcache_mshr_id_t),
-                .wbuf_addr_t                        (wbuf_addr_t),
-                .wbuf_data_t                        (wbuf_data_t),
-                .wbuf_be_t                          (wbuf_be_t),
-                .wbuf_timecnt_t                     (wbuf_timecnt_t),
-                .hpdcache_access_data_t             (hpdcache_access_data_t),
-                .hpdcache_access_be_t               (hpdcache_access_be_t),
-                .hpdcache_req_addr_t                (hpdcache_req_addr_t),
-                .hpdcache_req_offset_t              (hpdcache_req_offset_t),
-                .hpdcache_req_tid_t                 (hpdcache_req_tid_t),
-                .hpdcache_req_sid_t                 (hpdcache_req_sid_t),
-                .hpdcache_req_data_t                (hpdcache_req_data_t),
-                .hpdcache_req_be_t                  (hpdcache_req_be_t),
-                .hpdcache_req_t                     (hpdcache_req_t),
-                .hpdcache_rsp_t                     (hpdcache_rsp_t),
-                .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
-                .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
-                .hpdcache_mem_req_w_t               (hpdcache_mem_req_w_t),
-                .hpdcache_mem_resp_w_t              (hpdcache_mem_resp_w_t)
-            ) hpdcache_ctrl_i(
-                .clk_i,
-                .rst_ni,
+    genvar bankId;
+    for (bankId = 0; bankId < nBanks; bankId++) begin: gen_banks
+        //  bank controller
+        //  {{{
+        hpdcache_ctrl #(
+            .HPDcacheCfg                        (HPDcacheCfg),
+            .hpdcache_nline_t                   (hpdcache_nline_t),
+            .hpdcache_tag_t                     (hpdcache_tag_t),
+            .hpdcache_set_t                     (hpdcache_set_t),
+            .hpdcache_word_t                    (hpdcache_word_t),
+            .hpdcache_data_word_t               (hpdcache_data_word_t),
+            .hpdcache_data_be_t                 (hpdcache_data_be_t),
+            .hpdcache_dir_entry_t               (hpdcache_dir_entry_t),
+            .hpdcache_way_vector_t              (hpdcache_way_vector_t),
+            .hpdcache_way_t                     (hpdcache_way_t),
+            .hpdcache_mshr_id_t                 (hpdcache_mshr_id_t),
+            .wbuf_addr_t                        (wbuf_addr_t),
+            .wbuf_data_t                        (wbuf_data_t),
+            .wbuf_be_t                          (wbuf_be_t),
+            .wbuf_timecnt_t                     (wbuf_timecnt_t),
+            .hpdcache_access_data_t             (hpdcache_access_data_t),
+            .hpdcache_access_be_t               (hpdcache_access_be_t),
+            .hpdcache_req_addr_t                (hpdcache_req_addr_t),
+            .hpdcache_req_offset_t              (hpdcache_req_offset_t),
+            .hpdcache_req_tid_t                 (hpdcache_req_tid_t),
+            .hpdcache_req_sid_t                 (hpdcache_req_sid_t),
+            .hpdcache_req_data_t                (hpdcache_req_data_t),
+            .hpdcache_req_be_t                  (hpdcache_req_be_t),
+            .hpdcache_req_t                     (hpdcache_req_t),
+            .hpdcache_rsp_t                     (hpdcache_rsp_t),
+            .hpdcache_mem_id_t                  (hpdcache_mem_id_t),
+            .hpdcache_mem_req_t                 (hpdcache_mem_req_t),
+            .hpdcache_mem_req_w_t               (hpdcache_mem_req_w_t),
+            .hpdcache_mem_resp_w_t              (hpdcache_mem_resp_w_t)
+        ) hpdcache_ctrl_i(
+            .clk_i,
+            .rst_ni,
 
-                .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
+            .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
 
-                .core_req_valid_i                   (bank_req_valid[bankId]),
-                .core_req_ready_o                   (bank_req_ready[bankId]),
-                .core_req_i                         (bank_req[bankId]),
-                .core_req_abort_i                   (bank_abort[bankId]),
-                .core_req_tag_i                     (bank_tag[bankId]),
-                .core_req_pma_i                     (bank_pma[bankId]),
+            .core_req_valid_i                   (bank_req_valid[bankId]),
+            .core_req_ready_o                   (bank_req_ready[bankId]),
+            .core_req_i                         (bank_req[bankId]),
+            .core_req_abort_i                   (bank_abort[bankId]),
+            .core_req_tag_i                     (bank_tag[bankId]),
+            .core_req_pma_i                     (bank_pma[bankId]),
 
-                .core_rsp_valid_o                   (core_rsp_valid[bankId]),
-                .core_rsp_o                         (core_rsp[bankId]),
+            .core_rsp_valid_o                   (core_rsp_valid[bankId]),
+            .core_rsp_o                         (core_rsp[bankId]),
 
-                .wbuf_flush_i,
+            .wbuf_flush_i,
 
-                .cachedir_hit_o                     (/* unused */),
+            .cachedir_hit_o                     (/* unused */),
 
-                .miss_req_valid_o                   (miss_req_valid[bankId]),
-                .miss_req_ready_i                   (miss_req_ready[bankId]),
-                .miss_req_nline_o                   (miss_req_nline[bankId]),
-                .miss_req_mshr_id_o                 (miss_req_mshr_id[bankId]),
+            .miss_req_valid_o                   (miss_req_valid[bankId]),
+            .miss_req_ready_i                   (miss_req_ready[bankId]),
+            .miss_req_nline_o                   (miss_req_nline[bankId]),
+            .miss_req_mshr_id_o                 (miss_req_mshr_id[bankId]),
 
-                .mshr_ack_i                         (mshr_ack[bankId]),
-                .mshr_ack_cs_i                      (mshr_ack_cs[bankId]),
-                .mshr_ack_id_i                      (mshr_ack_id[bankId]),
+            .mshr_ack_i                         (mshr_ack[bankId]),
+            .mshr_ack_cs_i                      (mshr_ack_cs[bankId]),
+            .mshr_ack_id_i                      (mshr_ack_id[bankId]),
 
-                .mshr_full_o                        (/* unused */),
-                .mshr_empty_o                       (bank_mshr_empty[bankId]),
+            .mshr_full_o                        (/* unused */),
+            .mshr_empty_o                       (bank_mshr_empty[bankId]),
 
-                .refill_req_valid_i                 (refill_req_valid[bankId]),
-                .refill_req_ready_o                 (refill_req_ready[bankId]),
-                .refill_is_error_i                  (refill_is_error),
-                .refill_busy_i                      (refill_busy[bankId]),
-                .refill_write_dir_i                 (refill_write_dir[bankId]),
-                .refill_write_data_i                (refill_write_data[bankId]),
-                .refill_word_i                      (refill_word),
-                .refill_data_i                      (refill_data),
-                .refill_updt_rtab_i                 (refill_updt_rtab[bankId]),
+            .refill_req_valid_i                 (refill_req_valid[bankId]),
+            .refill_req_ready_o                 (refill_req_ready[bankId]),
+            .refill_is_error_i                  (refill_is_error),
+            .refill_busy_i                      (refill_busy[bankId]),
+            .refill_write_dir_i                 (refill_write_dir[bankId]),
+            .refill_write_data_i                (refill_write_data[bankId]),
+            .refill_word_i                      (refill_word),
+            .refill_data_i                      (refill_data),
+            .refill_updt_rtab_i                 (refill_updt_rtab[bankId]),
 
-                .flush_busy_i                       (flush_busy),
-                .flush_check_nline_o                (flush_check_nline[bankId]),
-                .flush_check_hit_i                  (flush_check_hit),
-                .flush_alloc_o                      (ctrl_flush_alloc[bankId]),
-                .flush_alloc_ready_i                (flush_alloc_ready),
-                .flush_alloc_nline_o                (ctrl_flush_alloc_nline[bankId]),
-                .flush_alloc_way_o                  (ctrl_flush_alloc_way[bankId]),
-                .flush_data_read_i                  (flush_data_read),
-                .flush_data_read_set_i              (flush_data_read_set),
-                .flush_data_read_word_i             (flush_data_read_word),
-                .flush_data_read_way_i              (flush_data_read_way),
-                .flush_data_read_data_o             (flush_data_read_data[bankId]),
-                .flush_ack_i                        (flush_ack),
-                .flush_ack_nline_i                  (flush_ack_nline),
+            .flush_busy_i                       (flush_busy),
+            .flush_check_nline_o                (flush_check_nline[bankId]),
+            .flush_check_hit_i                  (flush_check_hit),
+            .flush_alloc_o                      (ctrl_flush_alloc[bankId]),
+            .flush_alloc_ready_i                (flush_alloc_ready),
+            .flush_alloc_nline_o                (ctrl_flush_alloc_nline[bankId]),
+            .flush_alloc_way_o                  (ctrl_flush_alloc_way[bankId]),
+            .flush_data_read_i                  (flush_data_read),
+            .flush_data_read_set_i              (flush_data_read_set),
+            .flush_data_read_word_i             (flush_data_read_word),
+            .flush_data_read_way_i              (flush_data_read_way),
+            .flush_data_read_data_o             (flush_data_read_data[bankId]),
+            .flush_ack_i                        (flush_ack),
+            .flush_ack_nline_i                  (flush_ack_nline),
 
-                .inval_check_dir_i                  (inval_check_dir[bankId]),
-                .inval_write_dir_i                  (inval_write_dir[bankId]),
-                .inval_nline_i                      (inval_nline),
-                .inval_hit_o                        (inval_hit[bankId]),
+            .inval_check_dir_i                  (inval_check_dir[bankId]),
+            .inval_write_dir_i                  (inval_write_dir[bankId]),
+            .inval_nline_i                      (inval_nline),
+            .inval_hit_o                        (inval_hit[bankId]),
 
-                .wbuf_empty_o                       (wbuf_empty_o[bankId]),
+            .wbuf_empty_o                       (wbuf_empty_o[bankId]),
 
-                .mem_req_write_wbuf_ready_i         (mem_req_write_wbuf_ready[bankId]),
-                .mem_req_write_wbuf_valid_o         (mem_req_write_wbuf_valid[bankId]),
-                .mem_req_write_wbuf_o               (mem_req_write_wbuf[bankId]),
+            .mem_req_write_wbuf_ready_i         (mem_req_write_wbuf_ready[bankId]),
+            .mem_req_write_wbuf_valid_o         (mem_req_write_wbuf_valid[bankId]),
+            .mem_req_write_wbuf_o               (mem_req_write_wbuf[bankId]),
 
-                .mem_req_write_wbuf_data_ready_i    (mem_req_write_wbuf_data_ready[bankId]),
-                .mem_req_write_wbuf_data_valid_o    (mem_req_write_wbuf_data_valid[bankId]),
-                .mem_req_write_wbuf_data_o          (mem_req_write_wbuf_data[bankId]),
+            .mem_req_write_wbuf_data_ready_i    (mem_req_write_wbuf_data_ready[bankId]),
+            .mem_req_write_wbuf_data_valid_o    (mem_req_write_wbuf_data_valid[bankId]),
+            .mem_req_write_wbuf_data_o          (mem_req_write_wbuf_data[bankId]),
 
-                .mem_resp_write_wbuf_ready_o        (mem_resp_write_wbuf_ready[bankId]),
-                .mem_resp_write_wbuf_valid_i        (mem_resp_write_wbuf_valid[bankId]),
-                .mem_resp_write_wbuf_i              (mem_resp_write_wbuf[bankId]),
+            .mem_resp_write_wbuf_ready_o        (mem_resp_write_wbuf_ready[bankId]),
+            .mem_resp_write_wbuf_valid_i        (mem_resp_write_wbuf_valid[bankId]),
+            .mem_resp_write_wbuf_i              (mem_resp_write_wbuf[bankId]),
 
-                .uc_busy_i                          (~uc_ready),
-                .uc_lrsc_snoop_o                    (uc_lrsc_snoop[bankId]),
-                .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr[bankId]),
-                .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size[bankId]),
-                .uc_req_valid_o                     (uc_req_valid[bankId]),
-                .uc_req_op_o                        (uc_req_op[bankId]),
-                .uc_req_addr_o                      (uc_req_addr[bankId]),
-                .uc_req_size_o                      (uc_req_size[bankId]),
-                .uc_req_data_o                      (uc_req_data[bankId]),
-                .uc_req_be_o                        (uc_req_be[bankId]),
-                .uc_req_uc_o                        (uc_req_uncacheable[bankId]),
-                .uc_req_sid_o                       (uc_req_sid[bankId]),
-                .uc_req_tid_o                       (uc_req_tid[bankId]),
-                .uc_req_need_rsp_o                  (uc_req_need_rsp[bankId]),
-                .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
-                .uc_dir_amo_match_i                 (uc_dir_amo_match[bankId]),
-                .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
-                .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
-                .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
-                .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way[bankId]),
-                .uc_data_amo_write_i                (uc_data_amo_write[bankId]),
-                .uc_data_amo_write_enable_i         (uc_data_amo_write_enable[bankId]),
-                .uc_data_amo_write_set_i            (uc_data_amo_write_set),
-                .uc_data_amo_write_size_i           (uc_data_amo_write_size),
-                .uc_data_amo_write_word_i           (uc_data_amo_write_word),
-                .uc_data_amo_write_data_i           (uc_data_amo_write_data),
-                .uc_data_amo_write_be_i             (uc_data_amo_write_be),
-                .uc_core_rsp_ready_o                (uc_core_rsp_ready[bankId]),
-                .uc_core_rsp_valid_i                (uc_core_rsp_valid[bankId]),
-                .uc_core_rsp_i                      (uc_core_rsp),
+            .uc_busy_i                          (~uc_ready),
+            .uc_lrsc_snoop_o                    (uc_lrsc_snoop[bankId]),
+            .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr[bankId]),
+            .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size[bankId]),
+            .uc_req_valid_o                     (uc_req_valid[bankId]),
+            .uc_req_op_o                        (uc_req_op[bankId]),
+            .uc_req_addr_o                      (uc_req_addr[bankId]),
+            .uc_req_size_o                      (uc_req_size[bankId]),
+            .uc_req_data_o                      (uc_req_data[bankId]),
+            .uc_req_be_o                        (uc_req_be[bankId]),
+            .uc_req_uc_o                        (uc_req_uncacheable[bankId]),
+            .uc_req_sid_o                       (uc_req_sid[bankId]),
+            .uc_req_tid_o                       (uc_req_tid[bankId]),
+            .uc_req_need_rsp_o                  (uc_req_need_rsp[bankId]),
+            .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
+            .uc_dir_amo_match_i                 (uc_dir_amo_match[bankId]),
+            .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
+            .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
+            .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
+            .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way[bankId]),
+            .uc_data_amo_write_i                (uc_data_amo_write[bankId]),
+            .uc_data_amo_write_enable_i         (uc_data_amo_write_enable[bankId]),
+            .uc_data_amo_write_set_i            (uc_data_amo_write_set),
+            .uc_data_amo_write_size_i           (uc_data_amo_write_size),
+            .uc_data_amo_write_word_i           (uc_data_amo_write_word),
+            .uc_data_amo_write_data_i           (uc_data_amo_write_data),
+            .uc_data_amo_write_be_i             (uc_data_amo_write_be),
+            .uc_core_rsp_ready_o                (uc_core_rsp_ready[bankId]),
+            .uc_core_rsp_valid_i                (uc_core_rsp_valid[bankId]),
+            .uc_core_rsp_i                      (uc_core_rsp),
 
-                .cmo_busy_i                         (~cmo_ready),
-                .cmo_wait_i                         (cmo_wait),
-                .cmo_req_valid_o                    (cmo_req_valid[bankId]),
-                .cmo_req_op_o                       (cmo_req_op[bankId]),
-                .cmo_req_addr_o                     (cmo_req_addr[bankId]),
-                .cmo_req_wdata_o                    (cmo_req_wdata[bankId]),
-                .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
-                .cmo_dir_check_nline_i              (cmo_dir_check_nline),
-                .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
-                .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
-                .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way[bankId]),
-                .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty[bankId]),
-                .cmo_dir_check_entry_i              (cmo_dir_check_entry),
-                .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
-                .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
-                .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid[bankId]),
-                .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty[bankId]),
-                .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag[bankId]),
-                .cmo_dir_inval_i                    (cmo_dir_inval),
-                .cmo_dir_inval_set_i                (cmo_dir_inval_set),
-                .cmo_dir_inval_way_i                (cmo_dir_inval_way),
+            .cmo_busy_i                         (~cmo_ready),
+            .cmo_wait_i                         (cmo_wait),
+            .cmo_req_valid_o                    (cmo_req_valid[bankId]),
+            .cmo_req_op_o                       (cmo_req_op[bankId]),
+            .cmo_req_addr_o                     (cmo_req_addr[bankId]),
+            .cmo_req_wdata_o                    (cmo_req_wdata[bankId]),
+            .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
+            .cmo_dir_check_nline_i              (cmo_dir_check_nline),
+            .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
+            .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
+            .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way[bankId]),
+            .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty[bankId]),
+            .cmo_dir_check_entry_i              (cmo_dir_check_entry),
+            .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
+            .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
+            .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid[bankId]),
+            .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty[bankId]),
+            .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag[bankId]),
+            .cmo_dir_inval_i                    (cmo_dir_inval),
+            .cmo_dir_inval_set_i                (cmo_dir_inval_set),
+            .cmo_dir_inval_way_i                (cmo_dir_inval_way),
 
-                .rtab_empty_o                       (bank_rtab_empty[bankId]),
-                .ctrl_empty_o                       (bank_ctrl_empty[bankId]),
+            .rtab_empty_o                       (bank_rtab_empty[bankId]),
+            .ctrl_empty_o                       (bank_ctrl_empty[bankId]),
 
-                .cfg_enable_i,
-                .cfg_prefetch_updt_plru_i,
-                .cfg_rtab_single_entry_i,
-                .cfg_default_wb_i                   (cfg_default_wb),
+            .cfg_enable_i,
+            .cfg_prefetch_updt_plru_i,
+            .cfg_rtab_single_entry_i,
+            .cfg_default_wb_i                   (cfg_default_wb),
 
-                .cfg_wbuf_threshold_i,
-                .cfg_wbuf_reset_timecnt_on_write_i,
-                .cfg_wbuf_sequential_waw_i,
-                .cfg_wbuf_inhibit_write_coalescing_i,
+            .cfg_wbuf_threshold_i,
+            .cfg_wbuf_reset_timecnt_on_write_i,
+            .cfg_wbuf_sequential_waw_i,
+            .cfg_wbuf_inhibit_write_coalescing_i,
 
-                .evt_cache_write_miss_o             (evt_cache_write_miss_o[bankId]),
-                .evt_cache_read_miss_o              (evt_cache_read_miss_o[bankId]),
-                .evt_uncached_req_o                 (evt_uncached_req_o[bankId]),
-                .evt_cmo_req_o                      (evt_cmo_req_o[bankId]),
-                .evt_write_req_o                    (evt_write_req_o[bankId]),
-                .evt_read_req_o                     (evt_read_req_o[bankId]),
-                .evt_prefetch_req_o                 (evt_prefetch_req_o[bankId]),
-                .evt_req_on_hold_o                  (evt_req_on_hold_o[bankId]),
-                .evt_rtab_rollback_o                (evt_rtab_rollback_o[bankId]),
-                .evt_stall_refill_o                 (evt_stall_refill_o[bankId]),
-                .evt_stall_o                        (evt_stall_o[bankId])
-            );
-            //  }}}
-        end
-    endgenerate
+            .evt_cache_write_miss_o             (evt_cache_write_miss_o[bankId]),
+            .evt_cache_read_miss_o              (evt_cache_read_miss_o[bankId]),
+            .evt_uncached_req_o                 (evt_uncached_req_o[bankId]),
+            .evt_cmo_req_o                      (evt_cmo_req_o[bankId]),
+            .evt_write_req_o                    (evt_write_req_o[bankId]),
+            .evt_read_req_o                     (evt_read_req_o[bankId]),
+            .evt_prefetch_req_o                 (evt_prefetch_req_o[bankId]),
+            .evt_req_on_hold_o                  (evt_req_on_hold_o[bankId]),
+            .evt_rtab_rollback_o                (evt_rtab_rollback_o[bankId]),
+            .evt_stall_refill_o                 (evt_stall_refill_o[bankId]),
+            .evt_stall_o                        (evt_stall_o[bankId])
+        );
+        //  }}}
+    end
 
     assign rtab_empty = |bank_rtab_empty;
     assign ctrl_empty = |bank_ctrl_empty;
@@ -1034,11 +1032,15 @@ import hpdcache_pkg::*;
     //      1xxx...xxxx  -> Flush writes (where at least one x is 0)
     //      0bbx...xxxx  -> Write buffer writes (where b is the bank id)
     function automatic hpdcache_mem_req_t hpdcache_req_write_sel_id(
-        hpdcache_mem_req_t req, int unsigned bankId, int kind
+        hpdcache_mem_req_t req, int unsigned bank, int kind
     );
         //  Request from the write buffer
         unique if (kind == 0) begin
-            req.mem_req_id = {1'b0, bankId[BankIdWidth-1:0], req.mem_req_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
+            if (nBanks > 1) begin
+                req.mem_req_id = {1'b0, bank[BankIdWidth-1:0], req.mem_req_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
+            end else begin
+                req.mem_req_id = {1'b0, req.mem_req_id[0 +: HPDcacheCfg.u.memIdWidth-1]};
+            end
         end
         //  Request from the flush controller
         else if (kind == 1) begin
@@ -1056,7 +1058,11 @@ import hpdcache_pkg::*;
     );
         //  Response to the write buffer
         unique if (kind == 0) begin
-            resp.mem_resp_w_id = {1'b0, {BankIdWidth{1'b0}}, resp.mem_resp_w_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
+            if (nBanks > 1) begin
+                resp.mem_resp_w_id = {1'b0, {BankIdWidth{1'b0}}, resp.mem_resp_w_id[0 +: HPDcacheCfg.u.memIdWidth-BankIdWidth-1]};
+            end else begin
+                resp.mem_resp_w_id = {1'b0, resp.mem_resp_w_id[0 +: HPDcacheCfg.u.memIdWidth-1]};
+            end
         end
         //  Response to the flush controller
         else if (kind == 1) begin
@@ -1067,13 +1073,6 @@ import hpdcache_pkg::*;
             resp.mem_resp_w_id = '1;
         end
         return resp;
-    endfunction
-
-    // Returns the bank ID from the response
-    function automatic logic[BankIdWidth-1:0] hpdcache_resp_write_bank_id(
-        hpdcache_mem_resp_w_t resp
-    );
-        return resp.mem_resp_w_id[HPDcacheCfg.u.memIdWidth-2:HPDcacheCfg.u.memIdWidth-1-BankIdWidth];
     endfunction
 
     generate
@@ -1133,12 +1132,21 @@ import hpdcache_pkg::*;
     //      Write response interface
     always_comb
     begin : mem_resp_write_demux_comb
-        mem_resp_write_flush_valid = 1'b0;
-        for (int unsigned bank = 0; bank < nBanks; bank++) begin
+        automatic int b;
+
+        for (int bank = 0; bank < nBanks; bank++) begin
             mem_resp_write_wbuf_valid[bank] = 1'b0;
         end
+        mem_resp_write_flush_valid = 1'b0;
         mem_resp_write_uc_valid = 1'b0;
         mem_resp_write_ready_o = 1'b0;
+
+        if (nBanks > 1) begin
+            b = int'(mem_resp_write_i.mem_resp_w_id[HPDcacheCfg.u.memIdWidth-2 -: BankIdWidth]);
+        end else begin
+            b = 0;
+        end
+
         if (mem_resp_write_valid_i) begin
             if (mem_resp_write_i.mem_resp_w_id == {HPDcacheCfg.u.memIdWidth{1'b1}}) begin
                 mem_resp_write_uc_valid = 1'b1;
@@ -1147,8 +1155,8 @@ import hpdcache_pkg::*;
                 mem_resp_write_flush_valid = 1'b1;
                 mem_resp_write_ready_o = mem_resp_write_flush_ready;
             end else begin
-                mem_resp_write_wbuf_valid[hpdcache_resp_write_bank_id(mem_resp_write_i)] = 1'b1;
-                mem_resp_write_ready_o = mem_resp_write_wbuf_ready[hpdcache_resp_write_bank_id(mem_resp_write_i)];
+                mem_resp_write_wbuf_valid[b] = 1'b1;
+                mem_resp_write_ready_o = mem_resp_write_wbuf_ready[b];
             end
         end
     end
@@ -1189,7 +1197,7 @@ import hpdcache_pkg::*;
                 ($clog2(HPDcacheCfg.u.mshrWays * HPDcacheCfg.u.mshrSets) + 1)) else
                 $fatal("insufficient ID bits on the mem interface to transport misses");
         wbuf_mem_id_width_assert:
-            assert (HPDcacheCfg.u.memIdWidth >= (HPDcacheCfg.wbufDirPtrWidth + HPDcacheCfg.u.nBanks + 1)) else
+            assert (HPDcacheCfg.u.memIdWidth >= (HPDcacheCfg.wbufDirPtrWidth + $clog2(nBanks) + 1)) else
                 $fatal("insufficient ID bits on the mem interface to transport writes");
         //wt_or_wb_assert:
         //    assert (HPDcacheCfg.u.wtEn || HPDcacheCfg.u.wbEn) else
