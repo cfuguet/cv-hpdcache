@@ -65,7 +65,6 @@ import hpdcache_pkg::*;
     localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1,
 
     /* FIXME this is temporary while developing the multi-banking support */
-    localparam bit ENABLE_UNCACHED = (nBanks == 1),
     localparam bit ENABLE_CMO = (nBanks == 1)
 )
     //  }}}
@@ -215,24 +214,24 @@ import hpdcache_pkg::*;
     logic                  inval_hit              [nBanks];
 
     logic                  uc_ready;
-    logic                  uc_req_valid           [nBanks];
-    hpdcache_uc_op_t       uc_req_op              [nBanks];
-    hpdcache_req_addr_t    uc_req_addr            [nBanks];
-    hpdcache_req_size_t    uc_req_size            [nBanks];
-    hpdcache_req_data_t    uc_req_data            [nBanks];
-    hpdcache_req_be_t      uc_req_be              [nBanks];
-    logic                  uc_req_uncacheable     [nBanks];
-    hpdcache_req_sid_t     uc_req_sid             [nBanks];
-    hpdcache_req_tid_t     uc_req_tid             [nBanks];
-    logic                  uc_req_need_rsp        [nBanks];
+    logic                  uc_req_valid                [nBanks];
+    hpdcache_uc_op_t       uc_req_op                   [nBanks];
+    hpdcache_req_addr_t    uc_req_addr                 [nBanks];
+    hpdcache_req_size_t    uc_req_size                 [nBanks];
+    hpdcache_req_data_t    uc_req_data                 [nBanks];
+    hpdcache_req_be_t      uc_req_be                   [nBanks];
+    logic                  uc_req_uncacheable          [nBanks];
+    hpdcache_req_sid_t     uc_req_sid                  [nBanks];
+    hpdcache_req_tid_t     uc_req_tid                  [nBanks];
+    logic                  uc_req_need_rsp             [nBanks];
     logic                  uc_wbuf_flush_all;
-    logic                  uc_dir_amo_match;
+    logic                  uc_dir_amo_match            [nBanks];
     hpdcache_set_t         uc_dir_amo_match_set;
     hpdcache_tag_t         uc_dir_amo_match_tag;
     logic                  uc_dir_amo_updt_sel_victim;
     hpdcache_way_vector_t  uc_dir_amo_hit_way          [nBanks];
-    logic                  uc_data_amo_write;
-    logic                  uc_data_amo_write_enable;
+    logic                  uc_data_amo_write           [nBanks];
+    logic                  uc_data_amo_write_enable    [nBanks];
     hpdcache_set_t         uc_data_amo_write_set;
     hpdcache_req_size_t    uc_data_amo_write_size;
     hpdcache_word_t        uc_data_amo_write_word;
@@ -242,7 +241,7 @@ import hpdcache_pkg::*;
     hpdcache_req_addr_t    uc_lrsc_snoop_addr          [nBanks];
     hpdcache_req_size_t    uc_lrsc_snoop_size          [nBanks];
     logic                  uc_core_rsp_ready           [nBanks];
-    logic                  uc_core_rsp_valid;
+    logic                  uc_core_rsp_valid           [nBanks];
     hpdcache_rsp_t         uc_core_rsp;
 
     logic                  cmo_req_valid               [nBanks];
@@ -558,20 +557,20 @@ import hpdcache_pkg::*;
                 .uc_req_tid_o                       (uc_req_tid[bankId]),
                 .uc_req_need_rsp_o                  (uc_req_need_rsp[bankId]),
                 .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
-                .uc_dir_amo_match_i                 (uc_dir_amo_match),
+                .uc_dir_amo_match_i                 (uc_dir_amo_match[bankId]),
                 .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
                 .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
                 .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
                 .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way[bankId]),
-                .uc_data_amo_write_i                (uc_data_amo_write),
-                .uc_data_amo_write_enable_i         (uc_data_amo_write_enable),
+                .uc_data_amo_write_i                (uc_data_amo_write[bankId]),
+                .uc_data_amo_write_enable_i         (uc_data_amo_write_enable[bankId]),
                 .uc_data_amo_write_set_i            (uc_data_amo_write_set),
                 .uc_data_amo_write_size_i           (uc_data_amo_write_size),
                 .uc_data_amo_write_word_i           (uc_data_amo_write_word),
                 .uc_data_amo_write_data_i           (uc_data_amo_write_data),
                 .uc_data_amo_write_be_i             (uc_data_amo_write_be),
                 .uc_core_rsp_ready_o                (uc_core_rsp_ready[bankId]),
-                .uc_core_rsp_valid_i                (uc_core_rsp_valid),
+                .uc_core_rsp_valid_i                (uc_core_rsp_valid[bankId]),
                 .uc_core_rsp_i                      (uc_core_rsp),
 
                 .cmo_busy_i                         (~cmo_ready),
@@ -690,127 +689,102 @@ import hpdcache_pkg::*;
     );
     //  }}}
 
-    if (ENABLE_UNCACHED) begin : gen_uncached_enabled
-        //  Uncacheable request handler
-        //  {{{
-        hpdcache_uncached #(
-            .HPDcacheCfg                   (HPDcacheCfg),
-            .hpdcache_nline_t              (hpdcache_nline_t),
-            .hpdcache_tag_t                (hpdcache_tag_t),
-            .hpdcache_set_t                (hpdcache_set_t),
-            .hpdcache_offset_t             (hpdcache_offset_t),
-            .hpdcache_word_t               (hpdcache_word_t),
-            .hpdcache_req_addr_t           (hpdcache_req_addr_t),
-            .hpdcache_req_tid_t            (hpdcache_req_tid_t),
-            .hpdcache_req_sid_t            (hpdcache_req_sid_t),
-            .hpdcache_req_data_t           (hpdcache_req_data_t),
-            .hpdcache_req_be_t             (hpdcache_req_be_t),
-            .hpdcache_way_vector_t         (hpdcache_way_vector_t),
-            .hpdcache_req_t                (hpdcache_req_t),
-            .hpdcache_rsp_t                (hpdcache_rsp_t),
-            .hpdcache_mem_addr_t           (hpdcache_mem_addr_t),
-            .hpdcache_mem_id_t             (hpdcache_mem_id_t),
-            .hpdcache_mem_req_t            (hpdcache_mem_req_t),
-            .hpdcache_mem_req_w_t          (hpdcache_mem_req_w_t),
-            .hpdcache_mem_resp_r_t         (hpdcache_mem_resp_r_t),
-            .hpdcache_mem_resp_w_t         (hpdcache_mem_resp_w_t)
-        ) hpdcache_uc_i(
-            .clk_i,
-            .rst_ni,
+    //  Uncacheable request handler
+    //  {{{
+    hpdcache_uncached #(
+        .HPDcacheCfg                   (HPDcacheCfg),
+        .hpdcache_nline_t              (hpdcache_nline_t),
+        .hpdcache_tag_t                (hpdcache_tag_t),
+        .hpdcache_set_t                (hpdcache_set_t),
+        .hpdcache_offset_t             (hpdcache_offset_t),
+        .hpdcache_word_t               (hpdcache_word_t),
+        .hpdcache_req_addr_t           (hpdcache_req_addr_t),
+        .hpdcache_req_tid_t            (hpdcache_req_tid_t),
+        .hpdcache_req_sid_t            (hpdcache_req_sid_t),
+        .hpdcache_req_data_t           (hpdcache_req_data_t),
+        .hpdcache_req_be_t             (hpdcache_req_be_t),
+        .hpdcache_way_vector_t         (hpdcache_way_vector_t),
+        .hpdcache_req_t                (hpdcache_req_t),
+        .hpdcache_rsp_t                (hpdcache_rsp_t),
+        .hpdcache_mem_addr_t           (hpdcache_mem_addr_t),
+        .hpdcache_mem_id_t             (hpdcache_mem_id_t),
+        .hpdcache_mem_req_t            (hpdcache_mem_req_t),
+        .hpdcache_mem_req_w_t          (hpdcache_mem_req_w_t),
+        .hpdcache_mem_resp_r_t         (hpdcache_mem_resp_r_t),
+        .hpdcache_mem_resp_w_t         (hpdcache_mem_resp_w_t),
+        .hpdcache_bank_id_t            (hpdcache_bank_id_t)
+    ) hpdcache_uc_i(
+        .clk_i,
+        .rst_ni,
 
-            .wbuf_empty_i                  (wbuf_empty_o),
-            .mshr_empty_i                  (mshr_empty),
-            .refill_busy_i                 (|refill_busy),
-            .rtab_empty_i                  (rtab_empty),
-            .ctrl_empty_i                  (ctrl_empty),
-            .flush_empty_i                 (flush_empty),
+        .wbuf_empty_i                  (wbuf_empty_o),
+        .mshr_empty_i                  (mshr_empty),
+        .refill_busy_i                 (|refill_busy),
+        .rtab_empty_i                  (rtab_empty),
+        .ctrl_empty_i                  (ctrl_empty),
+        .flush_empty_i                 (flush_empty),
 
-            .req_valid_i                   (uc_req_valid[0]),
-            .req_ready_o                   (uc_ready),
-            .req_op_i                      (uc_req_op[0]),
-            .req_addr_i                    (uc_req_addr[0]),
-            .req_size_i                    (uc_req_size[0]),
-            .req_data_i                    (uc_req_data[0]),
-            .req_be_i                      (uc_req_be[0]),
-            .req_uc_i                      (uc_req_uncacheable[0]),
-            .req_sid_i                     (uc_req_sid[0]),
-            .req_tid_i                     (uc_req_tid[0]),
-            .req_need_rsp_i                (uc_req_need_rsp[0]),
+        .req_valid_i                   (uc_req_valid),
+        .req_ready_o                   (uc_ready),
+        .req_op_i                      (uc_req_op),
+        .req_addr_i                    (uc_req_addr),
+        .req_size_i                    (uc_req_size),
+        .req_data_i                    (uc_req_data),
+        .req_be_i                      (uc_req_be),
+        .req_uc_i                      (uc_req_uncacheable),
+        .req_sid_i                     (uc_req_sid),
+        .req_tid_i                     (uc_req_tid),
+        .req_need_rsp_i                (uc_req_need_rsp),
 
-            .wbuf_flush_all_o              (uc_wbuf_flush_all),
+        .wbuf_flush_all_o              (uc_wbuf_flush_all),
 
-            .dir_amo_match_o               (uc_dir_amo_match),
-            .dir_amo_match_set_o           (uc_dir_amo_match_set),
-            .dir_amo_match_tag_o           (uc_dir_amo_match_tag),
-            .dir_amo_updt_sel_victim_o     (uc_dir_amo_updt_sel_victim),
-            .dir_amo_hit_way_i             (uc_dir_amo_hit_way[0]),
+        .dir_amo_match_o               (uc_dir_amo_match),
+        .dir_amo_match_set_o           (uc_dir_amo_match_set),
+        .dir_amo_match_tag_o           (uc_dir_amo_match_tag),
+        .dir_amo_updt_sel_victim_o     (uc_dir_amo_updt_sel_victim),
+        .dir_amo_hit_way_i             (uc_dir_amo_hit_way),
 
-            .data_amo_write_o              (uc_data_amo_write),
-            .data_amo_write_enable_o       (uc_data_amo_write_enable),
-            .data_amo_write_set_o          (uc_data_amo_write_set),
-            .data_amo_write_size_o         (uc_data_amo_write_size),
-            .data_amo_write_word_o         (uc_data_amo_write_word),
-            .data_amo_write_data_o         (uc_data_amo_write_data),
-            .data_amo_write_be_o           (uc_data_amo_write_be),
+        .data_amo_write_o              (uc_data_amo_write),
+        .data_amo_write_enable_o       (uc_data_amo_write_enable),
+        .data_amo_write_set_o          (uc_data_amo_write_set),
+        .data_amo_write_size_o         (uc_data_amo_write_size),
+        .data_amo_write_word_o         (uc_data_amo_write_word),
+        .data_amo_write_data_o         (uc_data_amo_write_data),
+        .data_amo_write_be_o           (uc_data_amo_write_be),
 
-            .lrsc_snoop_i                  (uc_lrsc_snoop[0]),
-            .lrsc_snoop_addr_i             (uc_lrsc_snoop_addr[0]),
-            .lrsc_snoop_size_i             (uc_lrsc_snoop_size[0]),
+        .lrsc_snoop_i                  (uc_lrsc_snoop),
+        .lrsc_snoop_addr_i             (uc_lrsc_snoop_addr),
+        .lrsc_snoop_size_i             (uc_lrsc_snoop_size),
 
-            .core_rsp_ready_i              (uc_core_rsp_ready[0]),
-            .core_rsp_valid_o              (uc_core_rsp_valid),
-            .core_rsp_o                    (uc_core_rsp),
+        .core_rsp_ready_i              (uc_core_rsp_ready),
+        .core_rsp_valid_o              (uc_core_rsp_valid),
+        .core_rsp_o                    (uc_core_rsp),
 
-            .mem_read_id_i                 (HPDCACHE_UC_READ_ID),
-            .mem_write_id_i                (HPDCACHE_UC_WRITE_ID),
+        .mem_read_id_i                 (HPDCACHE_UC_READ_ID),
+        .mem_write_id_i                (HPDCACHE_UC_WRITE_ID),
 
-            .mem_req_read_ready_i          (mem_req_read_uc_ready),
-            .mem_req_read_valid_o          (mem_req_read_uc_valid),
-            .mem_req_read_o                (mem_req_read_uc),
+        .mem_req_read_ready_i          (mem_req_read_uc_ready),
+        .mem_req_read_valid_o          (mem_req_read_uc_valid),
+        .mem_req_read_o                (mem_req_read_uc),
 
-            .mem_resp_read_ready_o         (mem_resp_read_uc_ready),
-            .mem_resp_read_valid_i         (mem_resp_read_uc_valid),
-            .mem_resp_read_i               (mem_resp_read_uc),
+        .mem_resp_read_ready_o         (mem_resp_read_uc_ready),
+        .mem_resp_read_valid_i         (mem_resp_read_uc_valid),
+        .mem_resp_read_i               (mem_resp_read_uc),
 
-            .mem_req_write_ready_i         (mem_req_write_uc_ready),
-            .mem_req_write_valid_o         (mem_req_write_uc_valid),
-            .mem_req_write_o               (mem_req_write_uc),
+        .mem_req_write_ready_i         (mem_req_write_uc_ready),
+        .mem_req_write_valid_o         (mem_req_write_uc_valid),
+        .mem_req_write_o               (mem_req_write_uc),
 
-            .mem_req_write_data_ready_i    (mem_req_write_uc_data_ready),
-            .mem_req_write_data_valid_o    (mem_req_write_uc_data_valid),
-            .mem_req_write_data_o          (mem_req_write_uc_data),
+        .mem_req_write_data_ready_i    (mem_req_write_uc_data_ready),
+        .mem_req_write_data_valid_o    (mem_req_write_uc_data_valid),
+        .mem_req_write_data_o          (mem_req_write_uc_data),
 
-            .mem_resp_write_ready_o        (mem_resp_write_uc_ready),
-            .mem_resp_write_valid_i        (mem_resp_write_uc_valid),
-            .mem_resp_write_i              (mem_resp_write_uc),
+        .mem_resp_write_ready_o        (mem_resp_write_uc_ready),
+        .mem_resp_write_valid_i        (mem_resp_write_uc_valid),
+        .mem_resp_write_i              (mem_resp_write_uc),
 
-            .cfg_error_on_cacheable_amo_i
-        );
-    end else begin : gen_uncached_disabled
-        assign uc_ready = 1'b1;
-        assign uc_wbuf_flush_all = 1'b0;
-        assign uc_dir_amo_match = 1'b0;
-        assign uc_dir_amo_match_set = '0;
-        assign uc_dir_amo_match_tag = '0;
-        assign uc_dir_amo_updt_sel_victim = 1'b0;
-        assign uc_data_amo_write = 1'b0;
-        assign uc_data_amo_write_enable = 1'b0;
-        assign uc_data_amo_write_set = '0;
-        assign uc_data_amo_write_size = '0;
-        assign uc_data_amo_write_word = '0;
-        assign uc_data_amo_write_data = '0;
-        assign uc_data_amo_write_be = '0;
-        assign uc_core_rsp_valid = 1'b0;
-        assign uc_core_rsp = '0;
-        assign mem_req_read_uc_valid = 1'b0;
-        assign mem_req_read_uc = '0;
-        assign mem_resp_read_uc_ready = 1'b0;
-        assign mem_req_write_uc_valid = 1'b0;
-        assign mem_req_write_uc = '0;
-        assign mem_req_write_uc_data_valid = 1'b0;
-        assign mem_req_write_uc_data = '0;
-        assign mem_resp_write_uc_ready = 1'b0;
-    end
+        .cfg_error_on_cacheable_amo_i
+    );
     //  }}}
 
     if (ENABLE_CMO) begin : gen_cmo_enabled
