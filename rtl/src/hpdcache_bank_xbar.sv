@@ -186,17 +186,58 @@ import hpdcache_pkg::*;
 
         assign bank_req_valid_o[gen_bank] = |bank_req_gnt_d[gen_bank];
         //  }}}
+    end
+
+    //  Response arbitration
+    //  {{{
+    for (gen_req = 0; gen_req < nReqs; gen_req++) begin : gen_req_resp_demux
+        logic          [nBanks-1:0] core_rsp_gnt;
+        hpdcache_rsp_t [nBanks-1:0] core_rsp;
+        logic          [nBanks-1:0] core_rsp_valid;
 
         //  Response demultiplexor
-        //  {{{
-        always_comb
-        begin : resp_demux
-            for (int unsigned i = 0; i < nReqs; i++) begin
-                core_rsp_valid_o[i] = core_rsp_valid_i[gen_bank] &&
-                        (i == hpdcache_uint32'(core_rsp_i[gen_bank].sid));
-                core_rsp_o[i] = core_rsp_i[gen_bank];
-            end
+        for (gen_bank = 0; gen_bank < nBanks; gen_bank++) begin : gen_bank_resp_pack
+            assign core_rsp_valid[gen_bank] = core_rsp_valid_i[gen_bank] &&
+                                              (gen_req == int'(core_rsp_i[gen_bank].sid));
+            assign core_rsp[gen_bank] = core_rsp_i[gen_bank];
         end
-        //  }}}
+
+        hpdcache_rrarb #(
+            .N              (nBanks)
+        ) rrarb_rsp_i(
+            .clk_i,
+            .rst_ni,
+
+            .req_i          (core_rsp_valid),
+            .gnt_o          (core_rsp_gnt),
+
+            //  requesters shall be always ready to consume responses
+            .ready_i        (1'b1)
+        );
+
+        hpdcache_mux #(
+            .NINPUT         (nBanks),
+            .DATA_WIDTH     (1),
+            .ONE_HOT_SEL    (1'b1)
+        ) core_rsp_valid_mux_i(
+            .data_i         (core_rsp_valid),
+            .sel_i          (core_rsp_gnt),
+            .data_o         (core_rsp_valid_o[gen_req])
+        );
+
+        hpdcache_mux #(
+            .NINPUT         (nBanks),
+            .DATA_WIDTH     ($bits(hpdcache_rsp_t)),
+            .ONE_HOT_SEL    (1'b1)
+        ) core_rsp_mux_i(
+            .data_i         (core_rsp),
+            .sel_i          (core_rsp_gnt),
+            .data_o         (core_rsp_o[gen_req])
+        );
+
+        core_rsp_assert: assert property (@(posedge clk_i) disable iff (!rst_ni)
+            $onehot0(core_rsp_valid)) else
+                $fatal("FIXME: simultaneous responses to same requester");
     end
+    //  }}}
 endmodule
