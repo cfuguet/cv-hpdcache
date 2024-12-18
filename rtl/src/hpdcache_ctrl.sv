@@ -87,6 +87,7 @@ import hpdcache_pkg::*;
 
     //      Core response interface
     output logic                  core_rsp_valid_o,
+    input  logic                  core_rsp_ready_i,
     output hpdcache_rsp_t         core_rsp_o,
 
     //      Force the write buffer to send all pending writes
@@ -436,10 +437,8 @@ import hpdcache_pkg::*;
     logic                    st2_mshr_alloc_wback;
     mshr_way_t               st2_mshr_alloc_way;
     hpdcache_dir_entry_t     refill_dir_entry;
-
-    // Core refill responses FIFO r/w
-    logic refill_core_rsp_valid_w, refill_core_rsp_valid_r;
-    hpdcache_rsp_t refill_core_rsp_w, refill_core_rsp_r;
+    logic                    refill_core_rsp_valid;
+    logic                    refill_core_rsp_ready;
 
     logic                    wbuf_flush;
     logic                    wbuf_write;
@@ -454,6 +453,9 @@ import hpdcache_pkg::*;
     logic                    wbuf_rtab_hit_sent;
     logic                    wbuf_rtab_not_ready;
 
+    logic                    core_rsp_valid;
+    logic                    core_rsp_ready;
+    hpdcache_rsp_t           core_rsp;
     //  }}}
 
     //  Decoding of the request in stage 0
@@ -665,7 +667,8 @@ import hpdcache_pkg::*;
         .st1_mshr_full_i                    (st1_mshr_alloc_full),
 
         .refill_busy_i,
-        .refill_core_rsp_valid_i            (refill_core_rsp_valid_r),
+        .refill_core_rsp_valid_i            (refill_core_rsp_valid),
+        .refill_core_rsp_ready_o            (refill_core_rsp_ready),
 
         .wbuf_write_valid_o                 (wbuf_write),
         .wbuf_write_ready_i                 (wbuf_write_ready),
@@ -675,11 +678,15 @@ import hpdcache_pkg::*;
 
         .uc_busy_i,
         .uc_req_valid_o,
+        .uc_core_rsp_valid_i,
         .uc_core_rsp_ready_o,
 
         .cmo_busy_i,
         .cmo_wait_i,
         .cmo_req_valid_o,
+
+        .core_rsp_valid_o                   (core_rsp_valid),
+        .core_rsp_ready_i                   (core_rsp_ready),
 
         .cfg_prefetch_updt_plru_i,
         .cfg_default_wb_i,
@@ -1158,31 +1165,25 @@ import hpdcache_pkg::*;
         // Respond to the core if it needs a response and
         // a) there is an error from memory AND we just got an ack from the miss handler
         // b) we are refilling data from memory AND the current word chunk being refilled is the requested
-        assign refill_core_rsp_valid_w = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_writing_rsp_word);
+        assign refill_core_rsp_valid = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_writing_rsp_word);
     end else begin : gen_refill_core_rsp
         // Same as in the previous comment but we don't need to check the current word, as the whole cacheline is being written in a single cycle
-        assign refill_core_rsp_valid_w = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_write_data_i);
+        assign refill_core_rsp_valid = refill_need_rsp & ((refill_is_error_i & mshr_ack_valid) | refill_write_data_i);
     end
-
-    assign refill_core_rsp_w.rdata   = refill_core_rsp_rdata;
-    assign refill_core_rsp_w.sid     = mshr_ack_src_id;
-    assign refill_core_rsp_w.tid     = mshr_ack_req_id;
-    assign refill_core_rsp_w.error   = refill_is_error_i;
-    assign refill_core_rsp_w.aborted = 1'b0;
 
     hpdcache_fifo_reg #(
         .FIFO_DEPTH  (1),
-        .FEEDTHROUGH (HPDcacheCfg.u.refillCoreRspFeedthrough),
+        .FEEDTHROUGH (HPDcacheCfg.u.coreRspFeedthrough),
         .fifo_data_t (hpdcache_rsp_t)
     ) i_refill_core_rsp_buf(
         .clk_i,
         .rst_ni,
-        .w_i         (refill_core_rsp_valid_w),
-        .wok_o       (/*unused*/),
-        .wdata_i     (refill_core_rsp_w),
-        .r_i         (1'b1),  //  core shall always be ready to consume a response
-        .rok_o       (refill_core_rsp_valid_r),
-        .rdata_o     (refill_core_rsp_r)
+        .w_i         (core_rsp_valid),
+        .wok_o       (core_rsp_ready),
+        .wdata_i     (core_rsp),
+        .r_i         (core_rsp_ready_i),
+        .rok_o       (core_rsp_valid_o),
+        .rdata_o     (core_rsp_o)
     );
 
     //  }}}
@@ -1355,18 +1356,32 @@ import hpdcache_pkg::*;
 
     //  Control of the response to the core
     //  {{{
-    assign core_rsp_valid_o   = refill_core_rsp_valid_r |
-                                (uc_core_rsp_valid_i & uc_core_rsp_ready_o) |
-                                st1_rsp_valid;
-    assign core_rsp_o.rdata   = (refill_core_rsp_valid_r ? refill_core_rsp_r.rdata :
-                                (uc_core_rsp_valid_i     ? uc_core_rsp_i.rdata : st1_read_data));
-    assign core_rsp_o.sid     = (refill_core_rsp_valid_r ? refill_core_rsp_r.sid :
-                                (uc_core_rsp_valid_i     ? uc_core_rsp_i.sid : st1_req.sid));
-    assign core_rsp_o.tid     = (refill_core_rsp_valid_r ? refill_core_rsp_r.tid :
-                                (uc_core_rsp_valid_i     ? uc_core_rsp_i.tid : st1_req.tid));
-    assign core_rsp_o.error   = (refill_core_rsp_valid_r ? refill_core_rsp_r.error :
-                                (uc_core_rsp_valid_i     ? uc_core_rsp_i.error : st1_rsp_error));
-    assign core_rsp_o.aborted = st1_rsp_aborted;
+    always_comb
+    begin : core_rsp_data_comb
+        case (1'b1)
+            refill_core_rsp_ready: begin
+                core_rsp.rdata   = refill_core_rsp_rdata;
+                core_rsp.sid     = mshr_ack_src_id;
+                core_rsp.tid     = mshr_ack_req_id;
+                core_rsp.error   = refill_is_error_i;
+                core_rsp.aborted = 1'b0;
+            end
+            uc_core_rsp_ready_o: begin
+                core_rsp.rdata   = uc_core_rsp_i.rdata;
+                core_rsp.sid     = uc_core_rsp_i.sid;
+                core_rsp.tid     = uc_core_rsp_i.tid;
+                core_rsp.error   = uc_core_rsp_i.error;
+                core_rsp.aborted = 1'b0;
+            end
+            default: begin
+                core_rsp.rdata   = st1_read_data;
+                core_rsp.sid     = st1_req.sid;
+                core_rsp.tid     = st1_req.tid;
+                core_rsp.error   = st1_rsp_error;
+                core_rsp.aborted = st1_rsp_aborted;
+            end
+        endcase
+    end
     //  }}}
 
     //  Assertions

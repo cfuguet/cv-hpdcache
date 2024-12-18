@@ -60,18 +60,24 @@ import hpdcache_pkg::*;
     input  hpdcache_pma_t                 core_req_pma_i   [nReqs],
 
     //      Core response interface
-    input  logic                          core_rsp_valid_i [nBanks],
-    input  hpdcache_rsp_t                 core_rsp_i       [nBanks],
     output logic                          core_rsp_valid_o [nReqs],
+    input  logic                          core_rsp_ready_i [nReqs],
     output hpdcache_rsp_t                 core_rsp_o       [nReqs],
 
-    //      Granted request
+    //      Bank request (granted request) interface
+    //         1st cycle
     output logic                          bank_req_valid_o [nBanks],
     input  logic                          bank_req_ready_i [nBanks],
     output hpdcache_req_t                 bank_req_o       [nBanks],
+    //         2nd cycle
     output logic                          bank_abort_o     [nBanks],
     output hpdcache_tag_t                 bank_tag_o       [nBanks],
-    output hpdcache_pma_t                 bank_pma_o       [nBanks]
+    output hpdcache_pma_t                 bank_pma_o       [nBanks],
+
+    //      Bank response interface
+    input  logic                          bank_rsp_valid_i [nBanks],
+    output logic                          bank_rsp_ready_o [nBanks],
+    input  hpdcache_rsp_t                 bank_rsp_i       [nBanks]
 );
     //  }}}
 
@@ -89,6 +95,8 @@ import hpdcache_pkg::*;
     hpdcache_pma_t        [nReqs-1:0]               core_req_pma;
     logic                 [nReqs-1:0][offWidth-1:0] core_req_off;
     logic                 [nReqs-1:0][offWidth-1:0] core_req_bid;
+
+    logic                 [nBanks-1:0][nReqs-1:0]   bank_rsp_ready;
 
     logic [nBanks-1:0][nReqs-1:0] bank_req_gnt_q, bank_req_gnt_d;
 
@@ -197,9 +205,11 @@ import hpdcache_pkg::*;
 
         //  Response demultiplexor
         for (gen_bank = 0; gen_bank < nBanks; gen_bank++) begin : gen_bank_resp_pack
-            assign core_rsp_valid[gen_bank] = core_rsp_valid_i[gen_bank] &&
-                                              (gen_req == int'(core_rsp_i[gen_bank].sid));
-            assign core_rsp[gen_bank] = core_rsp_i[gen_bank];
+            assign core_rsp_valid[gen_bank] = bank_rsp_valid_i[gen_bank] &&
+                                              (gen_req == int'(bank_rsp_i[gen_bank].sid));
+            assign core_rsp[gen_bank] = bank_rsp_i[gen_bank];
+
+            assign bank_rsp_ready[gen_bank][gen_req] = core_rsp_gnt[gen_bank];
         end
 
         hpdcache_rrarb #(
@@ -210,9 +220,7 @@ import hpdcache_pkg::*;
 
             .req_i          (core_rsp_valid),
             .gnt_o          (core_rsp_gnt),
-
-            //  requesters shall be always ready to consume responses
-            .ready_i        (1'b1)
+            .ready_i        (core_rsp_ready_i[gen_req])
         );
 
         hpdcache_mux #(
@@ -234,10 +242,10 @@ import hpdcache_pkg::*;
             .sel_i          (core_rsp_gnt),
             .data_o         (core_rsp_o[gen_req])
         );
+    end
 
-        core_rsp_assert: assert property (@(posedge clk_i) disable iff (!rst_ni)
-            $onehot0(core_rsp_valid)) else
-                $fatal("FIXME: simultaneous responses to same requester");
+    for (gen_bank = 0; gen_bank < nBanks; gen_bank++) begin : bank_rsp_ready_gen
+        assign bank_rsp_ready_o[gen_bank] = |bank_rsp_ready[gen_bank];
     end
     //  }}}
 endmodule

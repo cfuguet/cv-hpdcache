@@ -148,6 +148,7 @@ module hpdcache_ctrl_pe
     //   {{{
     input  logic                   refill_busy_i,
     input  logic                   refill_core_rsp_valid_i,
+    output logic                   refill_core_rsp_ready_o,
     //   }}}
 
     //   Write buffer
@@ -170,6 +171,7 @@ module hpdcache_ctrl_pe
     //   {{{
     input  logic                   uc_busy_i,
     output logic                   uc_req_valid_o,
+    input  logic                   uc_core_rsp_valid_i,
     output logic                   uc_core_rsp_ready_o,
     //   }}}
 
@@ -178,6 +180,12 @@ module hpdcache_ctrl_pe
     input  logic                   cmo_busy_i,
     input  logic                   cmo_wait_i,
     output logic                   cmo_req_valid_o,
+    //   }}}
+
+    //   Core response
+    //   {{{
+    output logic                   core_rsp_valid_o,
+    input  logic                   core_rsp_ready_i,  // core response buffer not full
     //   }}}
 
     //   Configuration
@@ -228,11 +236,6 @@ module hpdcache_ctrl_pe
     assign evt_stall_o = core_req_valid_i & ~core_req_ready_o;
     //  }}}
 
-    //  Arbitration of responses to the core
-    //  {{{
-    assign uc_core_rsp_ready_o = ~refill_core_rsp_valid_i;
-    //  }}}
-
     //  Replay logic
     //  {{{
     //      Replay table allocation
@@ -244,6 +247,28 @@ module hpdcache_ctrl_pe
     assign evt_req_on_hold_o   = st1_rtab_alloc | st1_rtab_alloc_and_link,
            evt_rtab_rollback_o = st1_rtab_rback_o;
     //  }}}
+
+
+    //  Respond to the requester
+    //  {{{
+    //     A response to the core can come from:
+    //     1. Uncached handler
+    //     2. Miss handler (refill)
+    //     3. Controller Pipeline (e.g. cache hit or write ack)
+    assign core_rsp_valid_o = uc_core_rsp_valid_i | refill_core_rsp_valid_i | st1_rsp_valid_o;
+
+    //     Arbitration of responses to the core
+    //     Priority order: pipeline's stage 1 (highest), refill, uncached
+    assign uc_core_rsp_ready_o = uc_core_rsp_valid_i &
+                                 ~st1_rsp_valid_o &
+                                 ~refill_core_rsp_valid_i &
+                                 core_rsp_ready_i;
+
+    assign refill_core_rsp_ready_o = refill_core_rsp_valid_i &
+                                     ~st1_rsp_valid_o &
+                                     core_rsp_ready_i;
+    //  }}}
+
 
     //  Data-cache control lines
     //  {{{
@@ -343,6 +368,13 @@ module hpdcache_ctrl_pe
         //  {{{
         else if (flush_busy_i) begin
             //  flush controller has the control of the cache pipeline
+        end
+        //  }}}
+
+        //  Core response back-pressure
+        //  {{{
+        else if (!core_rsp_ready_i) begin
+            //  do not accept new requests if the core response FIFO buffer is full
         end
         //  }}}
 
@@ -994,6 +1026,7 @@ module hpdcache_ctrl_pe
                                  & (~cmo_busy_i | cmo_wait_i)
                                  & ~st1_req_valid_i
                                  & ~(st2_mshr_alloc_i | st2_dir_updt_i);
+
 
             //      Forward the core/rtab request to stage 1
             st1_req_valid_o = core_req_ready_o | rtab_req_ready_o;

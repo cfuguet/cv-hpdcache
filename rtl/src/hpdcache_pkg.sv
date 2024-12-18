@@ -427,8 +427,8 @@ package hpdcache_pkg;
         bit mshrRamByteEnable;
         //  MSHR uses whether FFs or SRAM
         bit mshrUseRegbank;
-        //  Use feedthrough FIFOs from the refill handler to the core
-        bit refillCoreRspFeedthrough;
+        //  Use feedthrough FIFO for responses to the core
+        bit coreRspFeedthrough;
         //  Depth of the refill FIFO
         int refillFifoDepth;
         //  Write-Buffer number of entries in the directory

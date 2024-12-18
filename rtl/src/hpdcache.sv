@@ -195,8 +195,13 @@ import hpdcache_pkg::*;
 
     //  Declaration of internal signals
     //  {{{
-    logic                  core_rsp_valid [nBanks];
-    hpdcache_rsp_t         core_rsp       [nBanks];
+    logic                  core_rsp_valid [nReqs];
+    logic                  core_rsp_ready [nReqs];
+    hpdcache_rsp_t         core_rsp       [nReqs];
+
+    logic                  bank_rsp_valid [nBanks];
+    logic                  bank_rsp_ready [nBanks];
+    hpdcache_rsp_t         bank_rsp       [nBanks];
 
     logic                  refill_req_valid  [nBanks];
     logic                  refill_req_ready  [nBanks];
@@ -372,6 +377,9 @@ import hpdcache_pkg::*;
     logic                  mshr_ack    [nBanks];
     logic                  mshr_ack_cs [nBanks];
     hpdcache_mshr_id_t     mshr_ack_id [nBanks];
+
+    genvar gen_bank;
+    genvar gen_req;
     //  }}}
 
     //  HPDcache controller
@@ -398,6 +406,12 @@ import hpdcache_pkg::*;
 
     localparam bank_rt_t bank_rt = buildBankRt();
 
+    //  The HPDcache makes the assumption that the requester is always ready
+    //  to accept a response
+    for (gen_req = 0; gen_req < nReqs; gen_req++) begin
+        assign core_rsp_ready[gen_req] = 1'b1;
+    end
+
     hpdcache_bank_xbar #(
         .HPDcacheCfg                        (HPDcacheCfg),
         .hpdcache_tag_t                     (hpdcache_tag_t),
@@ -417,9 +431,8 @@ import hpdcache_pkg::*;
         .core_req_abort_i,
         .core_req_tag_i,
         .core_req_pma_i,
-        .core_rsp_valid_i                   (core_rsp_valid),
-        .core_rsp_i                         (core_rsp),
         .core_rsp_valid_o,
+        .core_rsp_ready_i                   (core_rsp_ready),
         .core_rsp_o,
 
         .bank_req_valid_o                   (bank_req_valid),
@@ -427,12 +440,14 @@ import hpdcache_pkg::*;
         .bank_req_o                         (bank_req),
         .bank_abort_o                       (bank_abort),
         .bank_tag_o                         (bank_tag),
-        .bank_pma_o                         (bank_pma)
+        .bank_pma_o                         (bank_pma),
+        .bank_rsp_valid_i                   (bank_rsp_valid),
+        .bank_rsp_ready_o                   (bank_rsp_ready),
+        .bank_rsp_i                         (bank_rsp)
     );
     //  }}}
 
-    genvar bankId;
-    for (bankId = 0; bankId < nBanks; bankId++) begin: gen_banks
+    for (gen_bank = 0; gen_bank < nBanks; gen_bank++) begin: gen_banks
         //  bank controller
         //  {{{
         hpdcache_ctrl #(
@@ -471,131 +486,132 @@ import hpdcache_pkg::*;
 
             .cfg_prefetch_updt_sel_victim_i     (cfg_prefetch_updt_plru_i),
 
-            .core_req_valid_i                   (bank_req_valid[bankId]),
-            .core_req_ready_o                   (bank_req_ready[bankId]),
-            .core_req_i                         (bank_req[bankId]),
-            .core_req_abort_i                   (bank_abort[bankId]),
-            .core_req_tag_i                     (bank_tag[bankId]),
-            .core_req_pma_i                     (bank_pma[bankId]),
+            .core_req_valid_i                   (bank_req_valid[gen_bank]),
+            .core_req_ready_o                   (bank_req_ready[gen_bank]),
+            .core_req_i                         (bank_req[gen_bank]),
+            .core_req_abort_i                   (bank_abort[gen_bank]),
+            .core_req_tag_i                     (bank_tag[gen_bank]),
+            .core_req_pma_i                     (bank_pma[gen_bank]),
 
-            .core_rsp_valid_o                   (core_rsp_valid[bankId]),
-            .core_rsp_o                         (core_rsp[bankId]),
+            .core_rsp_valid_o                   (bank_rsp_valid[gen_bank]),
+            .core_rsp_ready_i                   (bank_rsp_ready[gen_bank]),
+            .core_rsp_o                         (bank_rsp[gen_bank]),
 
             .wbuf_flush_i,
 
             .cachedir_hit_o                     (/* unused */),
 
-            .miss_req_valid_o                   (miss_req_valid[bankId]),
-            .miss_req_ready_i                   (miss_req_ready[bankId]),
-            .miss_req_nline_o                   (miss_req_nline[bankId]),
-            .miss_req_mshr_id_o                 (miss_req_mshr_id[bankId]),
+            .miss_req_valid_o                   (miss_req_valid[gen_bank]),
+            .miss_req_ready_i                   (miss_req_ready[gen_bank]),
+            .miss_req_nline_o                   (miss_req_nline[gen_bank]),
+            .miss_req_mshr_id_o                 (miss_req_mshr_id[gen_bank]),
 
-            .mshr_ack_i                         (mshr_ack[bankId]),
-            .mshr_ack_cs_i                      (mshr_ack_cs[bankId]),
-            .mshr_ack_id_i                      (mshr_ack_id[bankId]),
+            .mshr_ack_i                         (mshr_ack[gen_bank]),
+            .mshr_ack_cs_i                      (mshr_ack_cs[gen_bank]),
+            .mshr_ack_id_i                      (mshr_ack_id[gen_bank]),
 
             .mshr_full_o                        (/* unused */),
-            .mshr_empty_o                       (bank_mshr_empty[bankId]),
+            .mshr_empty_o                       (bank_mshr_empty[gen_bank]),
 
-            .refill_req_valid_i                 (refill_req_valid[bankId]),
-            .refill_req_ready_o                 (refill_req_ready[bankId]),
+            .refill_req_valid_i                 (refill_req_valid[gen_bank]),
+            .refill_req_ready_o                 (refill_req_ready[gen_bank]),
             .refill_is_error_i                  (refill_is_error),
-            .refill_busy_i                      (refill_busy[bankId]),
-            .refill_write_dir_i                 (refill_write_dir[bankId]),
-            .refill_write_data_i                (refill_write_data[bankId]),
+            .refill_busy_i                      (refill_busy[gen_bank]),
+            .refill_write_dir_i                 (refill_write_dir[gen_bank]),
+            .refill_write_data_i                (refill_write_data[gen_bank]),
             .refill_word_i                      (refill_word),
             .refill_data_i                      (refill_data),
-            .refill_updt_rtab_i                 (refill_updt_rtab[bankId]),
+            .refill_updt_rtab_i                 (refill_updt_rtab[gen_bank]),
 
             .flush_busy_i                       (flush_busy),
-            .flush_check_nline_o                (flush_check_nline[bankId]),
+            .flush_check_nline_o                (flush_check_nline[gen_bank]),
             .flush_check_hit_i                  (flush_check_hit),
-            .flush_alloc_o                      (ctrl_flush_alloc[bankId]),
+            .flush_alloc_o                      (ctrl_flush_alloc[gen_bank]),
             .flush_alloc_ready_i                (flush_alloc_ready),
-            .flush_alloc_nline_o                (ctrl_flush_alloc_nline[bankId]),
-            .flush_alloc_way_o                  (ctrl_flush_alloc_way[bankId]),
+            .flush_alloc_nline_o                (ctrl_flush_alloc_nline[gen_bank]),
+            .flush_alloc_way_o                  (ctrl_flush_alloc_way[gen_bank]),
             .flush_data_read_i                  (flush_data_read),
             .flush_data_read_set_i              (flush_data_read_set),
             .flush_data_read_word_i             (flush_data_read_word),
             .flush_data_read_way_i              (flush_data_read_way),
-            .flush_data_read_data_o             (flush_data_read_data[bankId]),
+            .flush_data_read_data_o             (flush_data_read_data[gen_bank]),
             .flush_ack_i                        (flush_ack),
             .flush_ack_nline_i                  (flush_ack_nline),
 
-            .inval_check_dir_i                  (inval_check_dir[bankId]),
-            .inval_write_dir_i                  (inval_write_dir[bankId]),
+            .inval_check_dir_i                  (inval_check_dir[gen_bank]),
+            .inval_write_dir_i                  (inval_write_dir[gen_bank]),
             .inval_nline_i                      (inval_nline),
-            .inval_hit_o                        (inval_hit[bankId]),
+            .inval_hit_o                        (inval_hit[gen_bank]),
 
-            .wbuf_empty_o                       (wbuf_empty_o[bankId]),
+            .wbuf_empty_o                       (wbuf_empty_o[gen_bank]),
 
-            .mem_req_write_wbuf_ready_i         (mem_req_write_wbuf_ready[bankId]),
-            .mem_req_write_wbuf_valid_o         (mem_req_write_wbuf_valid[bankId]),
-            .mem_req_write_wbuf_o               (mem_req_write_wbuf[bankId]),
+            .mem_req_write_wbuf_ready_i         (mem_req_write_wbuf_ready[gen_bank]),
+            .mem_req_write_wbuf_valid_o         (mem_req_write_wbuf_valid[gen_bank]),
+            .mem_req_write_wbuf_o               (mem_req_write_wbuf[gen_bank]),
 
-            .mem_req_write_wbuf_data_ready_i    (mem_req_write_wbuf_data_ready[bankId]),
-            .mem_req_write_wbuf_data_valid_o    (mem_req_write_wbuf_data_valid[bankId]),
-            .mem_req_write_wbuf_data_o          (mem_req_write_wbuf_data[bankId]),
+            .mem_req_write_wbuf_data_ready_i    (mem_req_write_wbuf_data_ready[gen_bank]),
+            .mem_req_write_wbuf_data_valid_o    (mem_req_write_wbuf_data_valid[gen_bank]),
+            .mem_req_write_wbuf_data_o          (mem_req_write_wbuf_data[gen_bank]),
 
-            .mem_resp_write_wbuf_ready_o        (mem_resp_write_wbuf_ready[bankId]),
-            .mem_resp_write_wbuf_valid_i        (mem_resp_write_wbuf_valid[bankId]),
-            .mem_resp_write_wbuf_i              (mem_resp_write_wbuf[bankId]),
+            .mem_resp_write_wbuf_ready_o        (mem_resp_write_wbuf_ready[gen_bank]),
+            .mem_resp_write_wbuf_valid_i        (mem_resp_write_wbuf_valid[gen_bank]),
+            .mem_resp_write_wbuf_i              (mem_resp_write_wbuf[gen_bank]),
 
             .uc_busy_i                          (~uc_ready),
-            .uc_lrsc_snoop_o                    (uc_lrsc_snoop[bankId]),
-            .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr[bankId]),
-            .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size[bankId]),
-            .uc_req_valid_o                     (uc_req_valid[bankId]),
-            .uc_req_op_o                        (uc_req_op[bankId]),
-            .uc_req_addr_o                      (uc_req_addr[bankId]),
-            .uc_req_size_o                      (uc_req_size[bankId]),
-            .uc_req_data_o                      (uc_req_data[bankId]),
-            .uc_req_be_o                        (uc_req_be[bankId]),
-            .uc_req_uc_o                        (uc_req_uncacheable[bankId]),
-            .uc_req_sid_o                       (uc_req_sid[bankId]),
-            .uc_req_tid_o                       (uc_req_tid[bankId]),
-            .uc_req_need_rsp_o                  (uc_req_need_rsp[bankId]),
+            .uc_lrsc_snoop_o                    (uc_lrsc_snoop[gen_bank]),
+            .uc_lrsc_snoop_addr_o               (uc_lrsc_snoop_addr[gen_bank]),
+            .uc_lrsc_snoop_size_o               (uc_lrsc_snoop_size[gen_bank]),
+            .uc_req_valid_o                     (uc_req_valid[gen_bank]),
+            .uc_req_op_o                        (uc_req_op[gen_bank]),
+            .uc_req_addr_o                      (uc_req_addr[gen_bank]),
+            .uc_req_size_o                      (uc_req_size[gen_bank]),
+            .uc_req_data_o                      (uc_req_data[gen_bank]),
+            .uc_req_be_o                        (uc_req_be[gen_bank]),
+            .uc_req_uc_o                        (uc_req_uncacheable[gen_bank]),
+            .uc_req_sid_o                       (uc_req_sid[gen_bank]),
+            .uc_req_tid_o                       (uc_req_tid[gen_bank]),
+            .uc_req_need_rsp_o                  (uc_req_need_rsp[gen_bank]),
             .uc_wbuf_flush_all_i                (uc_wbuf_flush_all),
-            .uc_dir_amo_match_i                 (uc_dir_amo_match[bankId]),
+            .uc_dir_amo_match_i                 (uc_dir_amo_match[gen_bank]),
             .uc_dir_amo_match_set_i             (uc_dir_amo_match_set),
             .uc_dir_amo_match_tag_i             (uc_dir_amo_match_tag),
             .uc_dir_amo_updt_sel_victim_i       (uc_dir_amo_updt_sel_victim),
-            .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way[bankId]),
-            .uc_data_amo_write_i                (uc_data_amo_write[bankId]),
-            .uc_data_amo_write_enable_i         (uc_data_amo_write_enable[bankId]),
+            .uc_dir_amo_hit_way_o               (uc_dir_amo_hit_way[gen_bank]),
+            .uc_data_amo_write_i                (uc_data_amo_write[gen_bank]),
+            .uc_data_amo_write_enable_i         (uc_data_amo_write_enable[gen_bank]),
             .uc_data_amo_write_set_i            (uc_data_amo_write_set),
             .uc_data_amo_write_size_i           (uc_data_amo_write_size),
             .uc_data_amo_write_word_i           (uc_data_amo_write_word),
             .uc_data_amo_write_data_i           (uc_data_amo_write_data),
             .uc_data_amo_write_be_i             (uc_data_amo_write_be),
-            .uc_core_rsp_ready_o                (uc_core_rsp_ready[bankId]),
-            .uc_core_rsp_valid_i                (uc_core_rsp_valid[bankId]),
+            .uc_core_rsp_ready_o                (uc_core_rsp_ready[gen_bank]),
+            .uc_core_rsp_valid_i                (uc_core_rsp_valid[gen_bank]),
             .uc_core_rsp_i                      (uc_core_rsp),
 
             .cmo_busy_i                         (~cmo_ready),
             .cmo_wait_i                         (cmo_wait),
-            .cmo_req_valid_o                    (cmo_req_valid[bankId]),
-            .cmo_req_op_o                       (cmo_req_op[bankId]),
-            .cmo_req_addr_o                     (cmo_req_addr[bankId]),
-            .cmo_req_wdata_o                    (cmo_req_wdata[bankId]),
+            .cmo_req_valid_o                    (cmo_req_valid[gen_bank]),
+            .cmo_req_op_o                       (cmo_req_op[gen_bank]),
+            .cmo_req_addr_o                     (cmo_req_addr[gen_bank]),
+            .cmo_req_wdata_o                    (cmo_req_wdata[gen_bank]),
             .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
             .cmo_dir_check_nline_i              (cmo_dir_check_nline),
             .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
             .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
-            .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way[bankId]),
-            .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty[bankId]),
+            .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way[gen_bank]),
+            .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty[gen_bank]),
             .cmo_dir_check_entry_i              (cmo_dir_check_entry),
             .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
             .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
-            .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid[bankId]),
-            .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty[bankId]),
-            .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag[bankId]),
+            .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid[gen_bank]),
+            .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty[gen_bank]),
+            .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag[gen_bank]),
             .cmo_dir_inval_i                    (cmo_dir_inval),
             .cmo_dir_inval_set_i                (cmo_dir_inval_set),
             .cmo_dir_inval_way_i                (cmo_dir_inval_way),
 
-            .rtab_empty_o                       (bank_rtab_empty[bankId]),
-            .ctrl_empty_o                       (bank_ctrl_empty[bankId]),
+            .rtab_empty_o                       (bank_rtab_empty[gen_bank]),
+            .ctrl_empty_o                       (bank_ctrl_empty[gen_bank]),
 
             .cfg_enable_i,
             .cfg_prefetch_updt_plru_i,
@@ -607,24 +623,24 @@ import hpdcache_pkg::*;
             .cfg_wbuf_sequential_waw_i,
             .cfg_wbuf_inhibit_write_coalescing_i,
 
-            .evt_cache_write_miss_o             (evt_cache_write_miss_o[bankId]),
-            .evt_cache_read_miss_o              (evt_cache_read_miss_o[bankId]),
-            .evt_uncached_req_o                 (evt_uncached_req_o[bankId]),
-            .evt_cmo_req_o                      (evt_cmo_req_o[bankId]),
-            .evt_write_req_o                    (evt_write_req_o[bankId]),
-            .evt_read_req_o                     (evt_read_req_o[bankId]),
-            .evt_prefetch_req_o                 (evt_prefetch_req_o[bankId]),
-            .evt_req_on_hold_o                  (evt_req_on_hold_o[bankId]),
-            .evt_rtab_rollback_o                (evt_rtab_rollback_o[bankId]),
-            .evt_stall_refill_o                 (evt_stall_refill_o[bankId]),
-            .evt_stall_o                        (evt_stall_o[bankId])
+            .evt_cache_write_miss_o             (evt_cache_write_miss_o[gen_bank]),
+            .evt_cache_read_miss_o              (evt_cache_read_miss_o[gen_bank]),
+            .evt_uncached_req_o                 (evt_uncached_req_o[gen_bank]),
+            .evt_cmo_req_o                      (evt_cmo_req_o[gen_bank]),
+            .evt_write_req_o                    (evt_write_req_o[gen_bank]),
+            .evt_read_req_o                     (evt_read_req_o[gen_bank]),
+            .evt_prefetch_req_o                 (evt_prefetch_req_o[gen_bank]),
+            .evt_req_on_hold_o                  (evt_req_on_hold_o[gen_bank]),
+            .evt_rtab_rollback_o                (evt_rtab_rollback_o[gen_bank]),
+            .evt_stall_refill_o                 (evt_stall_refill_o[gen_bank]),
+            .evt_stall_o                        (evt_stall_o[gen_bank])
         );
         //  }}}
     end
 
-    assign rtab_empty = |bank_rtab_empty;
-    assign ctrl_empty = |bank_ctrl_empty;
-    assign mshr_empty = |bank_mshr_empty;
+    assign rtab_empty = &bank_rtab_empty;
+    assign ctrl_empty = &bank_ctrl_empty;
+    assign mshr_empty = &bank_mshr_empty;
     //  }}}
 
     //  Miss handler

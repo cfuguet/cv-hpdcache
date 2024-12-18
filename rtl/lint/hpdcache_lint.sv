@@ -53,7 +53,7 @@ module hpdcache_lint
       mshrSetsPerRam: 32,
       mshrRamByteEnable: 1'b1,
       mshrUseRegbank: 1,
-      refillCoreRspFeedthrough: 1'b1,
+      coreRspFeedthrough: 1'b1,
       refillFifoDepth: 2,
       wbufDirEntries: 16,
       wbufDataEntries: 8,
