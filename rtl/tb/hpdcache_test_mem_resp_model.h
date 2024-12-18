@@ -99,23 +99,12 @@ public:
             sc_module(nm),
             hpdcache_test_mem_resp_model_base(std::string(nm))
     {
-        SC_THREAD(read_process);
-        sensitive << clk_i.neg();
-
-        SC_THREAD(read_response_process);
-        sensitive << clk_i.pos();
-
-        SC_THREAD(write_address_process);
-        sensitive << clk_i.neg();
-
-        SC_THREAD(write_data_process);
-        sensitive << clk_i.neg();
-
-        SC_THREAD(write_process);
-        sensitive << clk_i.pos();
-
-        SC_THREAD(write_response_process);
-        sensitive << clk_i.pos();
+        SC_CTHREAD(read_process, clk_i.neg());
+        SC_CTHREAD(read_response_process, clk_i.pos());
+        SC_CTHREAD(write_address_process, clk_i.neg());
+        SC_CTHREAD(write_data_process, clk_i.neg());
+        SC_CTHREAD(write_process, clk_i.pos());
+        SC_CTHREAD(write_response_process, clk_i.pos());
     }
 
 private:
