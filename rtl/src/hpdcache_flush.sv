@@ -42,7 +42,10 @@ import hpdcache_pkg::*;
     parameter type hpdcache_mem_data_t = logic,
     parameter type hpdcache_mem_req_t = logic,
     parameter type hpdcache_mem_req_w_t = logic,
-    parameter type hpdcache_mem_resp_w_t = logic
+    parameter type hpdcache_mem_resp_w_t = logic,
+    parameter type hpdcache_bank_id_t = logic,
+
+    localparam int unsigned nBanks = HPDcacheCfg.u.nBanks
 )
 //  }}}
 
@@ -61,8 +64,8 @@ import hpdcache_pkg::*;
 
     //      CHECK interface
     //      {{{
-    input  hpdcache_nline_t       flush_check_nline_i,
-    output logic                  flush_check_hit_o,
+    input  hpdcache_nline_t       flush_check_nline_i [nBanks],
+    output logic                  flush_check_hit_o   [nBanks],
     //      }}}
 
     //      ALLOC interface
@@ -71,11 +74,13 @@ import hpdcache_pkg::*;
     output logic                  flush_alloc_ready_o,
     input  hpdcache_nline_t       flush_alloc_nline_i,
     input  hpdcache_way_vector_t  flush_alloc_way_i,
+    input  hpdcache_bank_id_t     flush_alloc_bank_id_i,
     //      }}}
 
     //      CACHE DATA interface
     //      {{{
     output logic                  flush_data_read_o,
+    output hpdcache_bank_id_t     flush_data_read_bank_id_o,
     output hpdcache_set_t         flush_data_read_set_o,
     output hpdcache_word_t        flush_data_read_word_o,
     output hpdcache_way_vector_t  flush_data_read_way_o,
@@ -135,6 +140,7 @@ import hpdcache_pkg::*;
     hpdcache_way_vector_t    flush_way_q;
     hpdcache_word_t          flush_word_q, flush_word_d;
     flush_fsm_e              flush_fsm_q, flush_fsm_d;
+    hpdcache_bank_id_t       flush_bank_q;
 
     logic                    flush_eol;
     logic                    flush_alloc;
@@ -148,9 +154,9 @@ import hpdcache_pkg::*;
     hpdcache_mem_data_t      flush_mem_req_rdata;
     logic                    flush_mem_req_rlast;
 
-    logic [FlushEntries-1:0] flush_check_hit;
+    logic [FlushEntries-1:0] flush_check_hit [nBanks];
 
-    genvar                   gen_i;
+    genvar                   gen_i, gen_j;
     //  }}}
 
     //  Flush FSM
@@ -217,6 +223,8 @@ import hpdcache_pkg::*;
         endcase
     end
 
+    assign flush_data_read_bank_id_o = flush_bank_q;
+
     //  Acknowledgement interface
     assign flush_ack = mem_resp_write_valid_i;
     assign flush_dir_ack_ptr = flush_dir_index_t'(mem_resp_write_i.mem_resp_w_id);
@@ -228,10 +236,12 @@ import hpdcache_pkg::*;
 
     //  Check logic
     //  {{{
-    for (gen_i = 0; gen_i < FlushEntries; gen_i++) begin : gen_check
-        assign flush_check_hit[gen_i] = (flush_check_nline_i == flush_dir_q[gen_i].nline);
+    for (gen_j = 0; gen_j < nBanks; gen_j++) begin : gen_bank_check
+        for (gen_i = 0; gen_i < FlushEntries; gen_i++) begin : gen_check
+            assign flush_check_hit[gen_j][gen_i] = (flush_check_nline_i[gen_j] == flush_dir_q[gen_i].nline);
+        end
+        assign flush_check_hit_o[gen_j] = |(flush_dir_valid_q & ~flush_dir_ack_bv & flush_check_hit[gen_j]);
     end
-    assign flush_check_hit_o = |(flush_dir_valid_q & ~flush_dir_ack_bv & flush_check_hit);
     //  }}}
 
     //  Internal state
@@ -272,6 +282,7 @@ import hpdcache_pkg::*;
             };
             flush_set_q <= flush_alloc_set;
             flush_way_q <= flush_alloc_way_i;
+            flush_bank_q <= flush_alloc_bank_id_i;
         end
     end
     //  }}}

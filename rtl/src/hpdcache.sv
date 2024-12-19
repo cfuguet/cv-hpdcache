@@ -61,8 +61,7 @@ import hpdcache_pkg::*;
     //  }}}
 
     localparam int nReqs  = HPDcacheCfg.u.nRequesters,
-    localparam int nBanks = HPDcacheCfg.u.nBanks,
-    localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1
+    localparam int nBanks = HPDcacheCfg.u.nBanks
 )
     //  }}}
 
@@ -145,8 +144,13 @@ import hpdcache_pkg::*;
 );
     //  }}}
 
-    //  Declaration of internal types
+    //  Declaration of internal constants and types
     //  {{{
+
+    localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1;
+    localparam int FLUSH_MODULE_NREQUESTERS = nBanks + 1;
+    localparam int CMO_FLUSH_REQ_INDEX = FLUSH_MODULE_NREQUESTERS - 1;
+
     typedef logic [HPDcacheCfg.u.paWidth-1:0] hpdcache_req_addr_t;
     typedef logic [HPDcacheCfg.nlineWidth-1:0] hpdcache_nline_t;
     typedef logic [HPDcacheCfg.setWidth-1:0] hpdcache_set_t;
@@ -195,6 +199,12 @@ import hpdcache_pkg::*;
         hpdcache_req_data_t wdata;
         logic [nBanks-1:0]  bank;
     } hpdcache_cmo_req_t;
+
+    typedef struct packed {
+        hpdcache_nline_t       nline;
+        hpdcache_way_vector_t  way;
+        hpdcache_bank_id_t     bank_id;
+    } hpdcache_flush_req_t;
     //  }}}
 
     //  Declaration of internal signals
@@ -289,22 +299,20 @@ import hpdcache_pkg::*;
     logic                  flush_empty;
     logic                  flush_busy;
     hpdcache_nline_t       flush_check_nline     [nBanks];
-    logic                  flush_check_hit;
-    logic                  flush_alloc;
+    logic                  flush_check_hit       [nBanks];
+    logic  [FLUSH_MODULE_NREQUESTERS-1:0] flush_alloc;
     logic                  flush_alloc_ready;
-    hpdcache_nline_t       flush_alloc_nline;
-    hpdcache_way_vector_t  flush_alloc_way;
+    logic [FLUSH_MODULE_NREQUESTERS-1:0]     flush_alloc_ready_requester;
+    hpdcache_flush_req_t [FLUSH_MODULE_NREQUESTERS-1:0] flush_req;
     logic                  flush_data_read;
+    logic                  flush_data_read_bank [nBanks];
     hpdcache_set_t         flush_data_read_set;
     hpdcache_word_t        flush_data_read_word;
     hpdcache_way_vector_t  flush_data_read_way;
-    hpdcache_access_data_t flush_data_read_data  [nBanks];
+    hpdcache_access_data_t flush_data_read_data;
+    hpdcache_access_data_t flush_data_read_data_bank  [nBanks];
     logic                  flush_ack;
     hpdcache_nline_t       flush_ack_nline;
-
-    logic                  ctrl_flush_alloc       [nBanks];
-    hpdcache_nline_t       ctrl_flush_alloc_nline [nBanks];
-    hpdcache_way_vector_t  ctrl_flush_alloc_way   [nBanks];
 
     logic [nBanks-1:0]     bank_rtab_empty;
     logic [nBanks-1:0]     bank_ctrl_empty;
@@ -537,16 +545,16 @@ import hpdcache_pkg::*;
 
             .flush_busy_i                       (flush_busy),
             .flush_check_nline_o                (flush_check_nline[gen_bank]),
-            .flush_check_hit_i                  (flush_check_hit),
-            .flush_alloc_o                      (ctrl_flush_alloc[gen_bank]),
-            .flush_alloc_ready_i                (flush_alloc_ready),
-            .flush_alloc_nline_o                (ctrl_flush_alloc_nline[gen_bank]),
-            .flush_alloc_way_o                  (ctrl_flush_alloc_way[gen_bank]),
-            .flush_data_read_i                  (flush_data_read),
+            .flush_check_hit_i                  (flush_check_hit[gen_bank]),
+            .flush_alloc_o                      (flush_alloc[gen_bank]),
+            .flush_alloc_ready_i                (flush_alloc_ready_requester[gen_bank]),
+            .flush_alloc_nline_o                (flush_req[gen_bank].nline),
+            .flush_alloc_way_o                  (flush_req[gen_bank].way),
+            .flush_data_read_i                  (flush_data_read_bank[gen_bank]),
             .flush_data_read_set_i              (flush_data_read_set),
             .flush_data_read_word_i             (flush_data_read_word),
             .flush_data_read_way_i              (flush_data_read_way),
-            .flush_data_read_data_o             (flush_data_read_data[gen_bank]),
+            .flush_data_read_data_o             (flush_data_read_data_bank[gen_bank]),
             .flush_ack_i                        (flush_ack),
             .flush_ack_nline_i                  (flush_ack_nline),
 
@@ -649,6 +657,7 @@ import hpdcache_pkg::*;
         );
 
         assign cmo_req[gen_bank].bank = 1 << gen_bank;
+        assign flush_req[gen_bank].bank_id = gen_bank;
         //  }}}
     end
 
@@ -921,10 +930,15 @@ import hpdcache_pkg::*;
         .dir_bank_sel_o                (cmo_dir_bank_sel),
 
         .flush_empty_i                 (flush_empty),
-        .flush_alloc_o                 (cmo_flush_alloc),
-        .flush_alloc_ready_i           (flush_alloc_ready),
-        .flush_alloc_nline_o           (cmo_flush_alloc_nline),
-        .flush_alloc_way_o             (cmo_flush_alloc_way)
+        .flush_alloc_o                 (flush_alloc[CMO_FLUSH_REQ_INDEX]),
+        .flush_alloc_ready_i           (flush_alloc_ready_requester[CMO_FLUSH_REQ_INDEX]),
+        .flush_alloc_nline_o           (flush_req[CMO_FLUSH_REQ_INDEX].nline),
+        .flush_alloc_way_o             (flush_req[CMO_FLUSH_REQ_INDEX].way)
+    );
+
+    hpdcache_1hot_to_binary #(.N(nBanks)) cmo_bank_vec_to_id_i (
+        .val_i(cmo_dir_bank_sel),
+        .val_o(flush_req[CMO_FLUSH_REQ_INDEX].bank_id)
     );
 
     assign cmo_busy = ~cmo_ready | |cmo_req_valid;
@@ -933,11 +947,45 @@ import hpdcache_pkg::*;
     //  Flush controller
     //  {{{
     if (HPDcacheCfg.u.wbEn) begin : gen_flush
-        assign flush_alloc = ctrl_flush_alloc[0] | cmo_flush_alloc;
-        assign flush_alloc_nline =
-            ctrl_flush_alloc[0] ? ctrl_flush_alloc_nline[0] : cmo_flush_alloc_nline;
-        assign flush_alloc_way =
-            ctrl_flush_alloc[0] ? ctrl_flush_alloc_way[0] : cmo_flush_alloc_way;
+        // Request arbiter & mux of the individual banks and the CMO
+        logic [FLUSH_MODULE_NREQUESTERS-1:0] flush_arb_req_gnt;
+        logic                                flush_arb_req_valid;
+        hpdcache_flush_req_t                 flush_arb_req;
+        hpdcache_bank_id_t                   flush_rsp_bank_id;
+
+        hpdcache_fxarb #(.N(FLUSH_MODULE_NREQUESTERS)) flush_req_arbiter_i(
+            .clk_i,
+            .rst_ni,
+            .req_i          (flush_alloc),
+            .gnt_o          (flush_arb_req_gnt),
+            .ready_i        (flush_alloc_ready)
+        );
+
+        assign flush_arb_req_valid = |flush_arb_req_gnt;
+        assign flush_alloc_ready_requester = flush_arb_req_gnt & {FLUSH_MODULE_NREQUESTERS{flush_alloc_ready}};
+
+        hpdcache_mux #(
+            .NINPUT         (FLUSH_MODULE_NREQUESTERS),
+            .DATA_WIDTH     ($bits(hpdcache_flush_req_t)),
+            .ONE_HOT_SEL    (1'b1)
+        ) flush_req_mux_i(
+            .data_i         (flush_req),
+            .sel_i          (flush_arb_req_gnt),
+            .data_o         (flush_arb_req)
+        );
+
+        always_comb begin : flush_data_mux_demux_comb
+            flush_data_read_data = '0;
+
+            for (int unsigned bank = 0; bank < nBanks; bank++) begin
+                if (bank == flush_rsp_bank_id) begin
+                    flush_data_read_bank[bank] = flush_data_read;
+                    flush_data_read_data = flush_data_read_data_bank[bank];
+                end else begin
+                    flush_data_read_bank[bank] = 1'b0;
+                end
+            end
+        end
 
         hpdcache_flush #(
             .HPDcacheCfg                   (HPDcacheCfg),
@@ -961,19 +1009,21 @@ import hpdcache_pkg::*;
             .flush_full_o                  (/* open */),
             .flush_busy_o                  (flush_busy),
 
-            .flush_check_nline_i           (flush_check_nline[0]),
+            .flush_check_nline_i           (flush_check_nline),
             .flush_check_hit_o             (flush_check_hit),
 
-            .flush_alloc_i                 (flush_alloc),
+            .flush_alloc_i                 (flush_arb_req_valid),
             .flush_alloc_ready_o           (flush_alloc_ready),
-            .flush_alloc_nline_i           (flush_alloc_nline),
-            .flush_alloc_way_i             (flush_alloc_way),
+            .flush_alloc_nline_i           (flush_arb_req.nline),
+            .flush_alloc_way_i             (flush_arb_req.way),
+            .flush_alloc_bank_id_i         (flush_arb_req.bank_id),
 
             .flush_data_read_o             (flush_data_read),
+            .flush_data_read_bank_id_o     (flush_rsp_bank_id),
             .flush_data_read_set_o         (flush_data_read_set),
             .flush_data_read_word_o        (flush_data_read_word),
             .flush_data_read_way_o         (flush_data_read_way),
-            .flush_data_read_data_i        (flush_data_read_data[0]),
+            .flush_data_read_data_i        (flush_data_read_data),
 
             .flush_ack_o                   (flush_ack),
             .flush_ack_nline_o             (flush_ack_nline),
@@ -994,7 +1044,7 @@ import hpdcache_pkg::*;
         //  The flush controller behaves as a black-hole: consumes but do not produce data
         assign flush_empty                     = 1'b1;
         assign flush_busy                      = 1'b0;
-        assign flush_check_hit                 = 1'b0;
+        assign flush_check_hit                 = '{default: '0};
         assign flush_alloc_ready               = 1'b1;
         assign flush_data_read                 = 1'b0;
         assign flush_data_read_set             = '0;
@@ -1245,10 +1295,6 @@ import hpdcache_pkg::*;
     //  Assertions
     //  {{{
 `ifndef HPDCACHE_ASSERT_OFF
-    assert property (@(posedge clk_i) disable iff (!rst_ni)
-        ctrl_flush_alloc[0] |-> !cmo_flush_alloc) else
-            $error("Unsupported concurrent flush from ctrl and cmo");
-
     initial begin
         word_width_assert:
             assert (HPDcacheCfg.u.wordWidth inside {32, 64}) else
