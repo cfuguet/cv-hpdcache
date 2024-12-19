@@ -37,7 +37,10 @@ import hpdcache_pkg::*;
     parameter type hpdcache_way_vector_t = logic,
 
     parameter type hpdcache_req_addr_t = logic,
-    parameter type hpdcache_req_data_t = logic
+    parameter type hpdcache_req_data_t = logic,
+    parameter type hpdcache_bank_vector_t = logic [HPDcacheCfg.u.nBanks-1:0],
+
+    localparam int unsigned nBanks = HPDcacheCfg.u.nBanks
 )
 //  }}}
 
@@ -63,6 +66,7 @@ import hpdcache_pkg::*;
     input  hpdcache_cmoh_op_t     req_op_i,
     input  hpdcache_req_addr_t    req_addr_i,
     input  hpdcache_req_data_t    req_wdata_i,
+    input  hpdcache_bank_vector_t req_bank_src_i,
     output logic                  req_wait_o,
     //  }}}
 
@@ -89,6 +93,8 @@ import hpdcache_pkg::*;
     output logic                  dir_inval_o,
     output hpdcache_set_t         dir_inval_set_o,
     output hpdcache_way_vector_t  dir_inval_way_o,
+
+    output hpdcache_bank_vector_t dir_bank_sel_o,
     // }}}
 
     //  Flush Controller Interface
@@ -123,6 +129,7 @@ import hpdcache_pkg::*;
     hpdcache_cmoh_fsm_t   cmoh_fsm_q, cmoh_fsm_d;
     hpdcache_cmoh_op_t    cmoh_op_q, cmoh_op_d;
     hpdcache_req_addr_t   cmoh_addr_q, cmoh_addr_d;
+    hpdcache_bank_vector_t cmoh_bank_q, cmoh_bank_d;
     hpdcache_way_vector_t cmoh_way_q, cmoh_way_d;
     hpdcache_set_t        cmoh_set_q, cmoh_set_d;
 
@@ -143,6 +150,7 @@ import hpdcache_pkg::*;
 
     logic cmoh_set_incr, cmoh_set_reset, cmoh_set_last;
     logic cmoh_way_incr, cmoh_way_reset, cmoh_way_last;
+    logic cmoh_bank_incr, cmoh_bank_reset, cmoh_bank_set_req, cmoh_bank_set_all, cmoh_bank_last;
 //  }}}
 
 //  CMO request handler FSM
@@ -154,6 +162,7 @@ import hpdcache_pkg::*;
     assign req_ready_o = (cmoh_fsm_q == CMOH_IDLE);
     assign req_wait_o  = (cmoh_fsm_q == CMOH_FENCE_WAIT_WBUF_RTAB_EMPTY) |
                          (cmoh_fsm_q == CMOH_WAIT_MSHR_RTAB_EMPTY);
+    assign dir_bank_sel_o = cmoh_bank_q;
 
     assign cmoh_dir_check_nline_hit = |dir_check_nline_hit_way_i;
 
@@ -169,10 +178,14 @@ import hpdcache_pkg::*;
         cmoh_flush_req_way_d   = cmoh_flush_req_way_q;
         cmoh_flush_req_inval_d = cmoh_flush_req_inval_q;
 
-        cmoh_set_incr  = 1'b0;
-        cmoh_set_reset = 1'b0;
-        cmoh_way_incr  = 1'b0;
-        cmoh_way_reset = 1'b0;
+        cmoh_set_incr     = 1'b0;
+        cmoh_set_reset    = 1'b0;
+        cmoh_way_incr     = 1'b0;
+        cmoh_way_reset    = 1'b0;
+        cmoh_bank_incr    = 1'b0;
+        cmoh_bank_reset   = 1'b0;
+        cmoh_bank_set_req = 1'b0;
+        cmoh_bank_set_all = 1'b0;
 
         dir_check_nline_o     = 1'b0;
         dir_check_nline_set_o = cmoh_set;
@@ -215,6 +228,13 @@ import hpdcache_pkg::*;
                         req_op_i.is_flush_inval_all: begin
                             cmoh_op_d      = req_op_i;
                             cmoh_addr_d    = req_addr_i;
+                            if (req_op_i.is_inval_all) begin
+                                cmoh_bank_set_all = 1'b1;
+                            end else if (req_op_i.is_flush_all | req_op_i.is_flush_inval_all) begin
+                                cmoh_bank_reset = 1'b1;
+                            end else begin
+                                cmoh_bank_set_req = 1'b1;
+                            end
                             cmoh_way_reset = 1'b1;
                             cmoh_set_reset = 1'b1;
                             if (mshr_empty_i && ~refill_busy_i && rtab_empty_i && ctrl_empty_i) begin // CMO
@@ -306,6 +326,7 @@ import hpdcache_pkg::*;
                 if (HPDcacheCfg.u.wbEn) begin
                     if (cmoh_flush_req_wok) begin
                         dir_check_entry_o = 1'b1;
+                        cmoh_bank_incr = cmoh_set_last;
                         cmoh_set_incr = cmoh_way_last;
                         cmoh_way_incr = 1'b1;
                         cmoh_flush_req_valid_d = 1'b1;
@@ -314,6 +335,7 @@ import hpdcache_pkg::*;
                         cmoh_fsm_d = CMOH_FLUSH_ALL_NEXT;
                     end
                 end else if (cmoh_flush_req_inval_q) begin
+                    cmoh_bank_set_all = 1'b1; // Flush not supported, select all banks to invalidate in parallel instead
                     cmoh_fsm_d = CMOH_INVAL_SET;
                 end else begin
                     cmoh_fsm_d = CMOH_IDLE;
@@ -337,13 +359,14 @@ import hpdcache_pkg::*;
                 if ((!cmoh_flush_req_valid_q || !cmoh_flush_req_inval_q) && cmoh_flush_req_wok)
                 begin
                     dir_check_entry_o = 1'b1;
+                    cmoh_bank_incr = cmoh_set_last;
                     cmoh_set_incr = cmoh_way_last;
                     cmoh_way_incr = 1'b1;
                     cmoh_flush_req_valid_d = 1'b1;
                     cmoh_flush_req_set_d = cmoh_set_q;
                     cmoh_flush_req_way_d = cmoh_way_q;
 
-                    if (cmoh_set_last && cmoh_way_last) begin
+                    if (cmoh_bank_last && cmoh_set_last && cmoh_way_last) begin
                         cmoh_fsm_d = CMOH_FLUSH_ALL_LAST;
                     end
                 end
@@ -422,6 +445,24 @@ import hpdcache_pkg::*;
                 hpdcache_way_vector_t'(1) : {cmoh_way_q[0 +: HPDcacheCfg.u.ways-1], 1'b0};
         end
     end
+
+    assign cmoh_bank_last = cmoh_bank_q[HPDcacheCfg.u.nBanks - 1];
+
+    always_comb
+    begin : bank_incr_comb
+        unique if (cmoh_bank_reset) begin
+            cmoh_bank_d = hpdcache_bank_vector_t'(1);
+        end else if (cmoh_bank_set_all) begin
+            cmoh_bank_d = '1;
+        end else if (cmoh_bank_set_req) begin
+            cmoh_bank_d = req_bank_src_i;
+        end else if (cmoh_bank_incr) begin
+            cmoh_bank_d = cmoh_bank_last ?
+                hpdcache_bank_vector_t'(1) : {cmoh_bank_q[0 +: HPDcacheCfg.u.nBanks-1], 1'b0};
+        end else begin
+            cmoh_bank_d = cmoh_bank_q;
+        end
+    end
 //  }}}
 
 //  CMO request handler set state
@@ -439,6 +480,7 @@ import hpdcache_pkg::*;
     begin
         cmoh_op_q              <= cmoh_op_d;
         cmoh_addr_q            <= cmoh_addr_d;
+        cmoh_bank_q            <= cmoh_bank_d;
         cmoh_way_q             <= cmoh_way_d;
         cmoh_set_q             <= cmoh_set_d;
         cmoh_flush_req_valid_q <= cmoh_flush_req_valid_d;

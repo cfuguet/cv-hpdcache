@@ -62,10 +62,7 @@ import hpdcache_pkg::*;
 
     localparam int nReqs  = HPDcacheCfg.u.nRequesters,
     localparam int nBanks = HPDcacheCfg.u.nBanks,
-    localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1,
-
-    /* FIXME this is temporary while developing the multi-banking support */
-    localparam bit ENABLE_CMO = (nBanks == 1)
+    localparam int BankIdWidth = nBanks > 1 ? $clog2(nBanks) : 1
 )
     //  }}}
 
@@ -191,6 +188,13 @@ import hpdcache_pkg::*;
     typedef hpdcache_req_addr_t wbuf_addr_t;
     typedef hpdcache_req_data_t wbuf_data_t;
     typedef hpdcache_req_be_t wbuf_be_t;
+
+    typedef struct packed {
+        hpdcache_cmoh_op_t  op;
+        hpdcache_req_addr_t addr;
+        hpdcache_req_data_t wdata;
+        logic [nBanks-1:0]  bank;
+    } hpdcache_cmo_req_t;
     //  }}}
 
     //  Declaration of internal signals
@@ -249,26 +253,34 @@ import hpdcache_pkg::*;
     logic                  uc_core_rsp_valid           [nBanks];
     hpdcache_rsp_t         uc_core_rsp;
 
-    logic                  cmo_req_valid               [nBanks];
+    logic [nBanks-1:0]     cmo_req_valid;
+    hpdcache_cmo_req_t [nBanks-1:0] cmo_req;
     logic                  cmo_ready;
-    hpdcache_cmoh_op_t     cmo_req_op                  [nBanks];
-    hpdcache_req_addr_t    cmo_req_addr                [nBanks];
-    hpdcache_req_data_t    cmo_req_wdata               [nBanks];
+    logic                  cmo_busy;
     logic                  cmo_wbuf_flush_all;
     logic                  cmo_dir_check_nline;
+    logic                  cmo_dir_check_nline_bank [nBanks];
     hpdcache_set_t         cmo_dir_check_nline_set;
     hpdcache_tag_t         cmo_dir_check_nline_tag;
-    hpdcache_way_vector_t  cmo_dir_check_nline_hit_way [nBanks];
-    logic                  cmo_dir_check_nline_dirty   [nBanks];
+    hpdcache_way_vector_t  cmo_dir_check_nline_hit_way;
+    hpdcache_way_vector_t  cmo_dir_check_nline_hit_way_bank [nBanks];
+    logic                  cmo_dir_check_nline_dirty;
+    logic                  cmo_dir_check_nline_dirty_bank   [nBanks];
     logic                  cmo_dir_check_entry;
+    logic                  cmo_dir_check_entry_bank         [nBanks];
     hpdcache_set_t         cmo_dir_check_entry_set;
     hpdcache_way_vector_t  cmo_dir_check_entry_way;
-    logic                  cmo_dir_check_entry_valid   [nBanks];
-    logic                  cmo_dir_check_entry_dirty   [nBanks];
-    hpdcache_tag_t         cmo_dir_check_entry_tag     [nBanks];
+    logic                  cmo_dir_check_entry_valid;
+    logic                  cmo_dir_check_entry_valid_bank   [nBanks];
+    logic                  cmo_dir_check_entry_dirty;
+    logic                  cmo_dir_check_entry_dirty_bank   [nBanks];
+    hpdcache_tag_t         cmo_dir_check_entry_tag;
+    hpdcache_tag_t         cmo_dir_check_entry_tag_bank     [nBanks];
     logic                  cmo_dir_inval;
+    logic                  cmo_dir_inval_bank [nBanks];
     hpdcache_set_t         cmo_dir_inval_set;
     hpdcache_way_vector_t  cmo_dir_inval_way;
+    logic [nBanks-1:0]     cmo_dir_bank_sel;
     logic                  cmo_wait;
     logic                  cmo_flush_alloc;
     hpdcache_nline_t       cmo_flush_alloc_nline;
@@ -588,25 +600,25 @@ import hpdcache_pkg::*;
             .uc_core_rsp_valid_i                (uc_core_rsp_valid[gen_bank]),
             .uc_core_rsp_i                      (uc_core_rsp),
 
-            .cmo_busy_i                         (~cmo_ready),
+            .cmo_busy_i                         (cmo_busy),
             .cmo_wait_i                         (cmo_wait),
             .cmo_req_valid_o                    (cmo_req_valid[gen_bank]),
-            .cmo_req_op_o                       (cmo_req_op[gen_bank]),
-            .cmo_req_addr_o                     (cmo_req_addr[gen_bank]),
-            .cmo_req_wdata_o                    (cmo_req_wdata[gen_bank]),
+            .cmo_req_op_o                       (cmo_req[gen_bank].op),
+            .cmo_req_addr_o                     (cmo_req[gen_bank].addr),
+            .cmo_req_wdata_o                    (cmo_req[gen_bank].wdata),
             .cmo_wbuf_flush_all_i               (cmo_wbuf_flush_all),
-            .cmo_dir_check_nline_i              (cmo_dir_check_nline),
+            .cmo_dir_check_nline_i              (cmo_dir_check_nline_bank[gen_bank]),
             .cmo_dir_check_nline_set_i          (cmo_dir_check_nline_set),
             .cmo_dir_check_nline_tag_i          (cmo_dir_check_nline_tag),
-            .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way[gen_bank]),
-            .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty[gen_bank]),
-            .cmo_dir_check_entry_i              (cmo_dir_check_entry),
+            .cmo_dir_check_nline_hit_way_o      (cmo_dir_check_nline_hit_way_bank[gen_bank]),
+            .cmo_dir_check_nline_dirty_o        (cmo_dir_check_nline_dirty_bank[gen_bank]),
+            .cmo_dir_check_entry_i              (cmo_dir_check_entry_bank[gen_bank]),
             .cmo_dir_check_entry_set_i          (cmo_dir_check_entry_set),
             .cmo_dir_check_entry_way_i          (cmo_dir_check_entry_way),
-            .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid[gen_bank]),
-            .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty[gen_bank]),
-            .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag[gen_bank]),
-            .cmo_dir_inval_i                    (cmo_dir_inval),
+            .cmo_dir_check_entry_valid_o        (cmo_dir_check_entry_valid_bank[gen_bank]),
+            .cmo_dir_check_entry_dirty_o        (cmo_dir_check_entry_dirty_bank[gen_bank]),
+            .cmo_dir_check_entry_tag_o          (cmo_dir_check_entry_tag_bank[gen_bank]),
+            .cmo_dir_inval_i                    (cmo_dir_inval_bank[gen_bank]),
             .cmo_dir_inval_set_i                (cmo_dir_inval_set),
             .cmo_dir_inval_way_i                (cmo_dir_inval_way),
 
@@ -635,6 +647,8 @@ import hpdcache_pkg::*;
             .evt_stall_refill_o                 (evt_stall_refill_o[gen_bank]),
             .evt_stall_o                        (evt_stall_o[gen_bank])
         );
+
+        assign cmo_req[gen_bank].bank = 1 << gen_bank;
         //  }}}
     end
 
@@ -801,79 +815,119 @@ import hpdcache_pkg::*;
     );
     //  }}}
 
-    if (ENABLE_CMO) begin : gen_cmo_enabled
-        //  CMO Request Handler
-        //  {{{
-        hpdcache_cmo #(
-          .HPDcacheCfg                     (HPDcacheCfg),
+    //  CMO Request Handler
+    //  {{{
 
-          .hpdcache_nline_t                (hpdcache_nline_t),
-          .hpdcache_tag_t                  (hpdcache_tag_t),
-          .hpdcache_set_t                  (hpdcache_set_t),
-          .hpdcache_data_word_t            (hpdcache_data_word_t),
-          .hpdcache_way_vector_t           (hpdcache_way_vector_t),
+    // Request arbiter & mux
+    logic [nBanks-1:0]    cmo_arb_req_gnt;
+    logic                 cmo_arb_req_valid;
+    hpdcache_cmo_req_t    cmo_arb_req;
 
-          .hpdcache_req_addr_t             (hpdcache_req_addr_t),
-          .hpdcache_req_data_t             (hpdcache_req_data_t)
-        ) hpdcache_cmo_i(
-            .clk_i,
-            .rst_ni,
+    hpdcache_fxarb #(.N(nBanks)) cmo_req_arbiter_i(
+        .clk_i,
+        .rst_ni,
+        .req_i          (cmo_req_valid),
+        .gnt_o          (cmo_arb_req_gnt),
+        .ready_i        (cmo_ready)
+    );
 
-            .wbuf_empty_i                  (wbuf_empty_o),
-            .mshr_empty_i                  (mshr_empty),
-            .refill_busy_i                 (|refill_busy),
-            .rtab_empty_i                  (rtab_empty),
-            .ctrl_empty_i                  (ctrl_empty),
+    assign cmo_arb_req_valid = |cmo_arb_req_gnt;
 
-            .req_valid_i                   (cmo_req_valid[0]),
-            .req_ready_o                   (cmo_ready),
-            .req_op_i                      (cmo_req_op[0]),
-            .req_addr_i                    (cmo_req_addr[0]),
-            .req_wdata_i                   (cmo_req_wdata[0]),
-            .req_wait_o                    (cmo_wait),
+    hpdcache_mux #(
+        .NINPUT         (nBanks),
+        .DATA_WIDTH     ($bits(hpdcache_cmo_req_t)),
+        .ONE_HOT_SEL    (1'b1)
+    ) cmo_req_mux_i(
+        .data_i         (cmo_req),
+        .sel_i          (cmo_arb_req_gnt),
+        .data_o         (cmo_arb_req)
+    );
 
-            .wbuf_flush_all_o              (cmo_wbuf_flush_all),
+    // Directory interface mux & demux
+    always_comb begin : dir_interface_mux_demux_comb
+        cmo_dir_check_nline_hit_way = '0;
+        cmo_dir_check_nline_dirty   = '0;
+        cmo_dir_check_entry_valid   = '0;
+        cmo_dir_check_entry_dirty   = '0;
+        cmo_dir_check_entry_tag     = '0;
 
-            .dir_check_nline_o             (cmo_dir_check_nline),
-            .dir_check_nline_set_o         (cmo_dir_check_nline_set),
-            .dir_check_nline_tag_o         (cmo_dir_check_nline_tag),
-            .dir_check_nline_hit_way_i     (cmo_dir_check_nline_hit_way[0]),
-            .dir_check_nline_dirty_i       (cmo_dir_check_nline_dirty[0]),
+        for (int unsigned bank = 0; bank < nBanks; bank++) begin
+            if (cmo_dir_bank_sel[bank]) begin
+                cmo_dir_check_nline_bank[bank] = cmo_dir_check_nline;
+                cmo_dir_check_entry_bank[bank] = cmo_dir_check_entry;
+                cmo_dir_inval_bank[bank]       = cmo_dir_inval;
 
-            .dir_check_entry_o             (cmo_dir_check_entry),
-            .dir_check_entry_set_o         (cmo_dir_check_entry_set),
-            .dir_check_entry_way_o         (cmo_dir_check_entry_way),
-            .dir_check_entry_valid_i       (cmo_dir_check_entry_valid[0]),
-            .dir_check_entry_dirty_i       (cmo_dir_check_entry_dirty[0]),
-            .dir_check_entry_tag_i         (cmo_dir_check_entry_tag[0]),
-
-            .dir_inval_o                   (cmo_dir_inval),
-            .dir_inval_set_o               (cmo_dir_inval_set),
-            .dir_inval_way_o               (cmo_dir_inval_way),
-
-            .flush_empty_i                 (flush_empty),
-            .flush_alloc_o                 (cmo_flush_alloc),
-            .flush_alloc_ready_i           (flush_alloc_ready),
-            .flush_alloc_nline_o           (cmo_flush_alloc_nline),
-            .flush_alloc_way_o             (cmo_flush_alloc_way)
-        );
-    end else begin : gen_cmo_disabled
-        assign cmo_ready = 1'b1;
-        assign cmo_wait = 1'b0;
-        assign cmo_wbuf_flush_all = 1'b0;
-        assign cmo_dir_check_nline = '0;
-        assign cmo_dir_check_nline_set = '0;
-        assign cmo_dir_check_nline_tag = '0;
-        assign cmo_dir_check_entry = '0;
-        assign cmo_dir_check_entry_set = '0;
-        assign cmo_dir_check_entry_way = '0;
-        assign cmo_dir_inval = 1'b0;
-        assign cmo_dir_inval_set = '0;
-        assign cmo_dir_inval_way = '0;
-        assign cmo_flush_alloc = 1'b0;
-        assign cmo_flush_alloc_nline = '0;
-        assign cmo_flush_alloc_way = '0;
+                cmo_dir_check_nline_hit_way |= cmo_dir_check_nline_hit_way_bank[bank];
+                cmo_dir_check_nline_dirty   |= cmo_dir_check_nline_dirty_bank[bank];
+                cmo_dir_check_entry_valid   |= cmo_dir_check_entry_valid_bank[bank];
+                cmo_dir_check_entry_dirty   |= cmo_dir_check_entry_dirty_bank[bank];
+                cmo_dir_check_entry_tag     |= cmo_dir_check_entry_tag_bank[bank];
+            end else begin
+                cmo_dir_check_nline_bank[bank] = 1'b0;
+                cmo_dir_check_entry_bank[bank] = 1'b0;
+                cmo_dir_inval_bank[bank]       = 1'b0;
+            end
+        end
     end
+
+    hpdcache_cmo #(
+        .HPDcacheCfg                     (HPDcacheCfg),
+
+        .hpdcache_nline_t                (hpdcache_nline_t),
+        .hpdcache_tag_t                  (hpdcache_tag_t),
+        .hpdcache_set_t                  (hpdcache_set_t),
+        .hpdcache_data_word_t            (hpdcache_data_word_t),
+        .hpdcache_way_vector_t           (hpdcache_way_vector_t),
+
+        .hpdcache_req_addr_t             (hpdcache_req_addr_t),
+        .hpdcache_req_data_t             (hpdcache_req_data_t)
+    ) hpdcache_cmo_i(
+        .clk_i,
+        .rst_ni,
+
+        .wbuf_empty_i                  (wbuf_empty_o),
+        .mshr_empty_i                  (mshr_empty),
+        .refill_busy_i                 (|refill_busy),
+        .rtab_empty_i                  (rtab_empty),
+        .ctrl_empty_i                  (ctrl_empty),
+
+        .req_valid_i                   (cmo_arb_req_valid),
+        .req_ready_o                   (cmo_ready),
+        .req_op_i                      (cmo_arb_req.op),
+        .req_addr_i                    (cmo_arb_req.addr),
+        .req_wdata_i                   (cmo_arb_req.wdata),
+        .req_bank_src_i                (cmo_arb_req.bank),
+        .req_wait_o                    (cmo_wait),
+
+        .wbuf_flush_all_o              (cmo_wbuf_flush_all),
+
+        .dir_check_nline_o             (cmo_dir_check_nline),
+        .dir_check_nline_set_o         (cmo_dir_check_nline_set),
+        .dir_check_nline_tag_o         (cmo_dir_check_nline_tag),
+        .dir_check_nline_hit_way_i     (cmo_dir_check_nline_hit_way),
+        .dir_check_nline_dirty_i       (cmo_dir_check_nline_dirty),
+
+        .dir_check_entry_o             (cmo_dir_check_entry),
+        .dir_check_entry_set_o         (cmo_dir_check_entry_set),
+        .dir_check_entry_way_o         (cmo_dir_check_entry_way),
+        .dir_check_entry_valid_i       (cmo_dir_check_entry_valid),
+        .dir_check_entry_dirty_i       (cmo_dir_check_entry_dirty),
+        .dir_check_entry_tag_i         (cmo_dir_check_entry_tag),
+
+        .dir_inval_o                   (cmo_dir_inval),
+        .dir_inval_set_o               (cmo_dir_inval_set),
+        .dir_inval_way_o               (cmo_dir_inval_way),
+
+        .dir_bank_sel_o                (cmo_dir_bank_sel),
+
+        .flush_empty_i                 (flush_empty),
+        .flush_alloc_o                 (cmo_flush_alloc),
+        .flush_alloc_ready_i           (flush_alloc_ready),
+        .flush_alloc_nline_o           (cmo_flush_alloc_nline),
+        .flush_alloc_way_o             (cmo_flush_alloc_way)
+    );
+
+    assign cmo_busy = ~cmo_ready | |cmo_req_valid;
     //  }}}
 
     //  Flush controller
