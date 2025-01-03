@@ -464,14 +464,30 @@ module hpdcache_ctrl_pe
                 end
                 //  }}}
 
-                //  Uncacheable load, store or AMO request
+                //  Uncacheable load, store, and AMOs
                 //  {{{
                 else if (st1_req_is_uncacheable_i) begin
+                    //  Forward the request to the uncacheable handler
                     uc_req_valid_o = 1'b1;
-                    st1_nop        = 1'b1;
 
-                    //  Performance event
-                    evt_uncached_req_o = 1'b1;
+                    //  Uncacheable handler is not ready
+                    if (!st1_uc_not_ready) begin
+                        st1_rtab_alloc = 1'b1;
+                        st1_rtab_uc_not_ready_o = 1'b1;
+                        st1_nop = 1'b1;
+                    end
+
+                    //  Request forwarded
+                    else begin
+                        st1_nop = 1'b1;
+
+                        //  If the request comes from the replay table, free the
+                        //  corresponding RTAB entry
+                        st1_rtab_commit_o = st1_req_rtab_i;
+
+                        //  Performance event
+                        evt_uncached_req_o = 1'b1;
+                    end
                 end
                 //  }}}
 
@@ -492,34 +508,45 @@ module hpdcache_ctrl_pe
                         //  Process the AMO request
                         else begin
                             uc_req_valid_o = 1'b1;
-                            st1_nop = 1'b1;
 
-                            //  If the request comes from the replay table, free the
-                            //  corresponding RTAB entry
-                            st1_rtab_commit_o = st1_req_rtab_i;
-
-                            if (cachedir_hit_i) begin
-                                //  When the hit cacheline is dirty, flush its data to the memory
-                                st2_flush_alloc_o = st1_dir_hit_dirty_i;
-
-                                //  Update the directory: an AMO request clears the dirty bit
-                                //  because it triggers a flush of the cacheline before actually
-                                //  executing the AMO.
-                                //  An AMO does not set the dirty bit because it is always forwarded
-                                //  to the memory. Then the local copy is updated with respect
-                                //  to the old data from the memory.
-                                st2_dir_updt_o = 1'b1;
-                                st2_dir_updt_valid_o = 1'b1;
-                                st2_dir_updt_wback_o = st1_dir_hit_wback_i;
-                                st2_dir_updt_dirty_o = 1'b0;
-
-                                //  If the cacheline has been pre-allocated for a pending miss, keep
-                                //  the fetch bit set
-                                st2_dir_updt_fetch_o = st1_dir_hit_fetch_i;
+                            //  Uncacheable handler is not ready
+                            if (!st1_uc_not_ready) begin
+                                st1_rtab_alloc = 1'b1;
+                                st1_rtab_uc_not_ready_o = 1'b1;
+                                st1_nop = 1'b1;
                             end
 
-                            //  Performance event
-                            evt_uncached_req_o = 1'b1;
+                            //  Forward the AMO request
+                            else begin
+                                st1_nop = 1'b1;
+
+                                //  If the request comes from the replay table, free the
+                                //  corresponding RTAB entry
+                                st1_rtab_commit_o = st1_req_rtab_i;
+
+                                if (cachedir_hit_i) begin
+                                    //  When the hit cacheline is dirty, flush its data to the memory
+                                    st2_flush_alloc_o = st1_dir_hit_dirty_i;
+
+                                    //  Update the directory: an AMO request clears the dirty bit
+                                    //  because it triggers a flush of the cacheline before actually
+                                    //  executing the AMO.
+                                    //  An AMO does not set the dirty bit because it is always forwarded
+                                    //  to the memory. Then the local copy is updated with respect
+                                    //  to the old data from the memory.
+                                    st2_dir_updt_o = 1'b1;
+                                    st2_dir_updt_valid_o = 1'b1;
+                                    st2_dir_updt_wback_o = st1_dir_hit_wback_i;
+                                    st2_dir_updt_dirty_o = 1'b0;
+
+                                    //  If the cacheline has been pre-allocated for a pending miss, keep
+                                    //  the fetch bit set
+                                    st2_dir_updt_fetch_o = st1_dir_hit_fetch_i;
+                                end
+
+                                //  Performance event
+                                evt_uncached_req_o = 1'b1;
+                            end
                         end
                     end
                     //  }}}

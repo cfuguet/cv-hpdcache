@@ -106,6 +106,9 @@ import hpdcache_pkg::*;
     input  hpdcache_nline_t       flush_ack_nline_i,  // Cache-line flush being acknowledged
     input  logic                  flush_ready_i,      // Flush controller is available
 
+    //  Control signals from the Uncached Handler
+    input  logic                  uc_ready_i,         // Uncached handler is ready
+
     //  Configuration parameters
     input  logic                  cfg_single_entry_i // Enable only one entry of the table
 );
@@ -390,6 +393,11 @@ import hpdcache_pkg::*;
             //  Update miss handler dependency
             //  {{{
             deps_rst[i].mshr_ready = miss_ready_i;
+            //  }}}
+
+            //  Update uncached handler dependency
+            //  {{{
+            deps_rst[i].uc_not_ready = ~uc_ready_i;
             //  }}}
 
             //  Update refill dependencies
