@@ -1,0 +1,15 @@
+// Copyright 2025 Inria
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+//
+// Authors         Cesar Fuguet
+// Creation Date   June, 2025
+//
+-DHPDCACHE_ASSERT_OFF
+-DSYNTHESIS
+-DYOSYS
+-F ../hpdcache.Flist
+${YOSYS_TOP_MODULE}.sv
+${HPDCACHE_DIR}/rtl/src/common/macros/blackbox/hpdcache_sram_1rw.sv
+${HPDCACHE_DIR}/rtl/src/common/macros/blackbox/hpdcache_sram_wmask_1rw.sv
+${HPDCACHE_DIR}/rtl/src/common/macros/blackbox/hpdcache_sram_wbyteenable_1rw.sv
+-top ${YOSYS_TOP_MODULE}
