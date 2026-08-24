@@ -62,3 +62,31 @@ This plugin is compatible with 32 and 64 bits. His purpose is to create trace of
          # false -> data are just write directly in te file
 
 
+# TRACES
+
+## Format
+
+The QEMU plugin generates a trace file with a sequence of memory operations.
+Each memory operation is formatted with the following data structure:
+
+typedef struct
+{
+    unsigned int delay   : 8;
+    unsigned int address : 64;
+    unsigned int size    : 8;
+    flags_t      flags;
+    unsigned int wdata   : 64;
+} __attribute__((__packed__)) memop_t ;
+
+The flags member is a bit vector with the following format:
+
+typedef union
+{
+    struct {
+        unsigned int is_cacheable  : 1;
+        unsigned int need_response : 1;
+        unsigned int is_store      : 1;
+    } __attribute__((__packed__)) val;
+
+    unsigned int __storage : 8;
+} __attribute__((__packed__)) flags_t ;
